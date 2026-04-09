@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
@@ -36,16 +37,16 @@ const storage = new CloudinaryStorage({
 });
 const upload = multer({ storage: storage }); 
 
-// 🔵 [แก้ไขแล้ว]: เชื่อมต่อกับ Aiven Cloud MySQL
+// เปลี่ยนจากค่าเดิมที่เป็นข้อความตรงๆ เป็น process.env.ชื่อตัวแปร
 const db = mysql.createConnection({
-    host: "mysql-186094ec-phuwadet1963-cbfd.i.aivencloud.com",
-    port: 23049,
-    user: "avnadmin",
-    password: "AVNS_Xis-juaAR5aKrlFY-3w", // รหัสผ่านจากรูปของคุณ
-    database: "defaultdb",
-    ssl: {
-        rejectUnauthorized: false // Aiven บังคับใช้ SSL
-    }
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASS,
+    database: process.env.DB_NAME,
+    ssl: {
+        rejectUnauthorized: false
+    }
 });
 
 db.connect((err) => {
