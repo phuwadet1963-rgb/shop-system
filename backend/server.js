@@ -14,287 +14,289 @@ const saltRounds = 10;
 
 const app = express();
 app.use(cors());app.use(cors({
-  origin: "*", // หรือใส่ URL ของหน้าเว็บคุณที่จะทำในสเต็ปถัดไป
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  credentials: true
+  origin: "*", // หรือใส่ URL ของหน้าเว็บคุณที่จะทำในสเต็ปถัดไป
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
 }));
 app.use(express.json());
 
 // 🟢 [สำคัญ]: ใส่ข้อมูล Cloudinary ของคุณที่นี่
 cloudinary.config({ 
-  cloud_name: 'dqpr5ll6u', 
-  api_key: '516198845634898', 
-  api_secret: 'PAoBcSz-UNtJ_N-OB7byupF1lL8' 
+  cloud_name: 'dqpr5ll6u', 
+  api_key: '516198845634898', 
+  api_secret: 'PAoBcSz-UNtJ_N-OB7byupF1lL8' 
 });
 
 const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'big_shop_uploads',
-    allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
-  },
+  cloudinary: cloudinary,
+  params: {
+    folder: 'big_shop_uploads',
+    allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
+  },
 });
 const upload = multer({ storage: storage }); 
 
 // 🔵 [แก้ไขแล้ว]: เชื่อมต่อกับ Aiven Cloud MySQL
 const db = mysql.createConnection({
-    host: "mysql-186094ec-phuwadet1963-cbfd.i.aivencloud.com",
-    port: 23049,
-    user: "avnadmin",
-    password: "AVNS_Xis-juaAR5aKrlFY-3w", // รหัสผ่านจากรูปของคุณ
-    database: "defaultdb",
-    ssl: {
-        rejectUnauthorized: false // Aiven บังคับใช้ SSL
-    }
+    host: "mysql-186094ec-phuwadet1963-cbfd.i.aivencloud.com",
+    port: 23049,
+    user: "avnadmin",
+    password: "AVNS_Xis-juaAR5aKrlFY-3w", // รหัสผ่านจากรูปของคุณ
+    database: "defaultdb",
+    ssl: {
+        rejectUnauthorized: false // Aiven บังคับใช้ SSL
+    }
 });
 
 db.connect((err) => {
-    if (err) {
-        console.error("❌ เชื่อมต่อฐานข้อมูลล้มเหลว:", err);
-        return;
-    }
-    console.log("✅ เชื่อมต่อฐานข้อมูล Aiven Cloud สำเร็จ!");
-    
-    // 🟠 [แถมให้]: สร้างตารางอัตโนมัติถ้ายังไม่มี
-    const createTables = `
-    CREATE TABLE IF NOT EXISTS users (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        username VARCHAR(255) UNIQUE,
-        password VARCHAR(255),
-        role VARCHAR(50),
-        email VARCHAR(255),
-        address TEXT,
-        phone VARCHAR(20),
-        profile_picture TEXT
-    );
-    CREATE TABLE IF NOT EXISTS products (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255),
-        price DECIMAL(10,2),
-        stock INT,
-        description TEXT,
-        image TEXT,
-        category VARCHAR(100)
-    );
-    CREATE TABLE IF NOT EXISTS orders (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        total_price DECIMAL(10,2),
-        items_count INT,
-        user_id INT,
-        status VARCHAR(50),
-        address TEXT,
-        phone VARCHAR(20),
-        slip_image TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS order_items (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        order_id INT,
-        product_id INT,
-        quantity INT
-    );`;
+    if (err) {
+        console.error("❌ เชื่อมต่อฐานข้อมูลล้มเหลว:", err);
+        return;
+    }
+    console.log("✅ เชื่อมต่อฐานข้อมูล Aiven Cloud สำเร็จ!");
 
-    // รันคำสั่งสร้างตาราง (แยกทีละคำสั่งเพื่อความชัวร์)
-    const sqlStatements = createTables.split(';').filter(s => s.trim());
-    sqlStatements.forEach(sql => {
-        db.query(sql, (err) => { if (err) console.log("แจ้งเตือนการสร้างตาราง:", err.message); });
-    });
+    
+    
+    // 🟠 [แถมให้]: สร้างตารางอัตโนมัติถ้ายังไม่มี
+    const createTables = `
+    CREATE TABLE IF NOT EXISTS users (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(255) UNIQUE,
+        password VARCHAR(255),
+        role VARCHAR(50),
+        email VARCHAR(255),
+        address TEXT,
+        phone VARCHAR(20),
+        profile_picture TEXT
+    );
+    CREATE TABLE IF NOT EXISTS products (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255),
+        price DECIMAL(10,2),
+        stock INT,
+        description TEXT,
+        image TEXT,
+        category VARCHAR(100)
+    );
+    CREATE TABLE IF NOT EXISTS orders (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        total_price DECIMAL(10,2),
+        items_count INT,
+        user_id INT,
+        status VARCHAR(50),
+        address TEXT,
+        phone VARCHAR(20),
+        slip_image TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS order_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id INT,
+        product_id INT,
+        quantity INT
+    );`;
+
+    // รันคำสั่งสร้างตาราง (แยกทีละคำสั่งเพื่อความชัวร์)
+    const sqlStatements = createTables.split(';').filter(s => s.trim());
+    sqlStatements.forEach(sql => {
+        db.query(sql, (err) => { if (err) console.log("แจ้งเตือนการสร้างตาราง:", err.message); });
+    });
 });
 
 // --- API (CRUD) ส่วนที่เหลือเหมือนเดิมที่คุณให้มา ---
 
 app.get('/api/products', (req, res) => {
-    db.query("SELECT * FROM products", (err, result) => {
-        if (err) return res.status(500).json(err);
-        return res.json(result);
-    });
+    db.query("SELECT * FROM products", (err, result) => {
+        if (err) return res.status(500).json(err);
+        return res.json(result);
+    });
 });
 
 app.post('/api/products', upload.single('image'), (req, res) => {
-  const { name, price, stock, description, category } = req.body; 
-  const image = req.file ? req.file.path : null;
-  const sql = "INSERT INTO products (name, price, stock, description, image, category) VALUES (?, ?, ?, ?, ?, ?)";
-  db.query(sql, [name, price, stock, description, image, category], (err, result) => {
-    if (err) return res.status(500).json(err);
-    res.json({ message: "เพิ่มสินค้าสำเร็จ!" });
-  });
+  const { name, price, stock, description, category } = req.body; 
+  const image = req.file ? req.file.path : null;
+  const sql = "INSERT INTO products (name, price, stock, description, image, category) VALUES (?, ?, ?, ?, ?, ?)";
+  db.query(sql, [name, price, stock, description, image, category], (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json({ message: "เพิ่มสินค้าสำเร็จ!" });
+  });
 });
 
 app.put('/api/products/:id', upload.single('image'), (req, res) => {
-    const { id } = req.params;
-    const { name, price, stock, description, category } = req.body; 
-    let sql = "UPDATE products SET name=?, price=?, stock=?, description=?, category=? WHERE id=?";
-    let params = [name, price, stock, description, category, id];
-    if (req.file) {
-        sql = "UPDATE products SET name=?, price=?, stock=?, description=?, category=?, image=? WHERE id=?";
-        params = [name, price, stock, description, category, req.file.path, id];
-    }
-    db.query(sql, params, (err, result) => {
-        if (err) return res.status(500).json(err);
-        res.json({ message: "แก้ไขสินค้าสำเร็จ" });
-    });
+    const { id } = req.params;
+    const { name, price, stock, description, category } = req.body; 
+    let sql = "UPDATE products SET name=?, price=?, stock=?, description=?, category=? WHERE id=?";
+    let params = [name, price, stock, description, category, id];
+    if (req.file) {
+        sql = "UPDATE products SET name=?, price=?, stock=?, description=?, category=?, image=? WHERE id=?";
+        params = [name, price, stock, description, category, req.file.path, id];
+    }
+    db.query(sql, params, (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json({ message: "แก้ไขสินค้าสำเร็จ" });
+    });
 });
 
 app.delete('/api/products/:id', (req, res) => {
-    const { id } = req.params;
-    const sql = "DELETE FROM products WHERE id = ?";
-    db.query(sql, [id], (err, result) => {
-        if (err) return res.status(500).json(err);
-        return res.json({ message: "ลบสำเร็จ!" });
-    });
+    const { id } = req.params;
+    const sql = "DELETE FROM products WHERE id = ?";
+    db.query(sql, [id], (err, result) => {
+        if (err) return res.status(500).json(err);
+        return res.json({ message: "ลบสำเร็จ!" });
+    });
 });
 
 app.post('/api/orders', (req, res) => {
-  const { total_price, items_count, user_id, cartItems } = req.body;
-  const sqlOrder = "INSERT INTO orders (total_price, items_count, user_id, status) VALUES (?, ?, ?, 'รอดำเนินการ')";
-  db.query(sqlOrder, [total_price, items_count, user_id], (err, result) => {
-    if (err) return res.status(500).json(err);
-    const orderId = result.insertId;
-    if (cartItems && cartItems.length > 0) {
-      const itemCounts = {};
-      cartItems.forEach(item => { itemCounts[item.id] = (itemCounts[item.id] || 0) + 1; });
-      const values = Object.keys(itemCounts).map(productId => [orderId, productId, itemCounts[productId]]);
-      const sqlItems = "INSERT INTO order_items (order_id, product_id, quantity) VALUES ?";
-      db.query(sqlItems, [values], (err2) => { if (err2) console.log("บันทึกรายละเอียดบิลพลาด:", err2); });
-    }
-    res.json({ orderId: orderId, message: "สั่งซื้อสำเร็จ" });
-  });
+  const { total_price, items_count, user_id, cartItems } = req.body;
+  const sqlOrder = "INSERT INTO orders (total_price, items_count, user_id, status) VALUES (?, ?, ?, 'รอดำเนินการ')";
+  db.query(sqlOrder, [total_price, items_count, user_id], (err, result) => {
+    if (err) return res.status(500).json(err);
+    const orderId = result.insertId;
+    if (cartItems && cartItems.length > 0) {
+      const itemCounts = {};
+      cartItems.forEach(item => { itemCounts[item.id] = (itemCounts[item.id] || 0) + 1; });
+      const values = Object.keys(itemCounts).map(productId => [orderId, productId, itemCounts[productId]]);
+      const sqlItems = "INSERT INTO order_items (order_id, product_id, quantity) VALUES ?";
+      db.query(sqlItems, [values], (err2) => { if (err2) console.log("บันทึกรายละเอียดบิลพลาด:", err2); });
+    }
+    res.json({ orderId: orderId, message: "สั่งซื้อสำเร็จ" });
+  });
 });
 
 app.get('/api/orders', (req, res) => {
-    const sql = "SELECT * FROM orders ORDER BY created_at DESC";
-    db.query(sql, (err, result) => {
-        if (err) return res.status(500).json(err);
-        return res.json(result);
-    });
+    const sql = "SELECT * FROM orders ORDER BY created_at DESC";
+    db.query(sql, (err, result) => {
+        if (err) return res.status(500).json(err);
+        return res.json(result);
+    });
 });
 
 app.put('/api/orders/:id', (req, res) => {
-  const orderId = req.params.id;
-  const { status } = req.body;
-  const updateSql = "UPDATE orders SET status = ? WHERE id = ?";
-  db.query(updateSql, [status, orderId], (err, result) => {
-    if (err) return res.status(500).json(err);
-    if (status === 'จัดส่งแล้ว') {
-      const getItemsSql = "SELECT product_id, quantity FROM order_items WHERE order_id = ?";
-      db.query(getItemsSql, [orderId], (err, items) => {
-        if (err) return;
-        items.forEach(item => {
-          const cutStockSql = "UPDATE products SET stock = stock - ? WHERE id = ?";
-          db.query(cutStockSql, [item.quantity, item.product_id], (err3) => {});
-        });
-      });
-    }
-    res.json({ message: "อัปเดตสถานะสำเร็จ" });
-  });
+  const orderId = req.params.id;
+  const { status } = req.body;
+  const updateSql = "UPDATE orders SET status = ? WHERE id = ?";
+  db.query(updateSql, [status, orderId], (err, result) => {
+    if (err) return res.status(500).json(err);
+    if (status === 'จัดส่งแล้ว') {
+      const getItemsSql = "SELECT product_id, quantity FROM order_items WHERE order_id = ?";
+      db.query(getItemsSql, [orderId], (err, items) => {
+        if (err) return;
+        items.forEach(item => {
+          const cutStockSql = "UPDATE products SET stock = stock - ? WHERE id = ?";
+          db.query(cutStockSql, [item.quantity, item.product_id], (err3) => {});
+        });
+      });
+    }
+    res.json({ message: "อัปเดตสถานะสำเร็จ" });
+  });
 });
 
 app.put('/api/orders/pay/:id', upload.single('slip'), (req, res) => {
-    const { id } = req.params;
-    const { address, phone } = req.body;
-    const slip_image = req.file ? req.file.path : null;
-    const sql = "UPDATE orders SET address = ?, phone = ?, slip_image = ?, status = 'ชำระเงินแล้ว' WHERE id = ?";
-    db.query(sql, [address, phone, slip_image, id], (err, result) => {
-        if (err) return res.status(500).json(err);
-        res.json({ message: "ส่งหลักฐานการชำระเงินเรียบร้อย!" });
-    });
+    const { id } = req.params;
+    const { address, phone } = req.body;
+    const slip_image = req.file ? req.file.path : null;
+    const sql = "UPDATE orders SET address = ?, phone = ?, slip_image = ?, status = 'ชำระเงินแล้ว' WHERE id = ?";
+    db.query(sql, [address, phone, slip_image, id], (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json({ message: "ส่งหลักฐานการชำระเงินเรียบร้อย!" });
+    });
 });
 
 app.delete('/api/orders/:id', (req, res) => {
-  const { id } = req.params;
-  const deleteItemsSql = "DELETE FROM order_items WHERE order_id = ?";
-  db.query(deleteItemsSql, [id], (err1) => {
-    if (err1) return res.status(500).json(err1);
-    const deleteOrderSql = "DELETE FROM orders WHERE id = ?";
-    db.query(deleteOrderSql, [id], (err2) => {
-      if (err2) return res.status(500).json(err2);
-      res.json({ message: "ลบประวัติการสั่งซื้อเรียบร้อยแล้ว!" });
-    });
-  });
+  const { id } = req.params;
+  const deleteItemsSql = "DELETE FROM order_items WHERE order_id = ?";
+  db.query(deleteItemsSql, [id], (err1) => {
+    if (err1) return res.status(500).json(err1);
+    const deleteOrderSql = "DELETE FROM orders WHERE id = ?";
+    db.query(deleteOrderSql, [id], (err2) => {
+      if (err2) return res.status(500).json(err2);
+      res.json({ message: "ลบประวัติการสั่งซื้อเรียบร้อยแล้ว!" });
+    });
+  });
 });
 
 app.get('/api/orders/:id/items', (req, res) => {
-  const orderId = req.params.id;
-  const sql = `SELECT p.name, p.price, oi.quantity FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?`;
-  db.query(sql, [orderId], (err, result) => {
-    if (err) return res.status(500).json(err);
-    res.json(result);
-  });
+  const orderId = req.params.id;
+  const sql = `SELECT p.name, p.price, oi.quantity FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?`;
+  db.query(sql, [orderId], (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json(result);
+  });
 });
 
 app.post('/api/login', (req, res) => {
-    const { username, password } = req.body;
-    const sql = "SELECT * FROM users WHERE username = ?";
-    db.query(sql, [username], async (err, result) => {
-        if (err) return res.status(500).json(err);
-        if (result.length > 0) {
-            const match = await bcrypt.compare(password, result[0].password);
-            if (match) {
-                res.json({ token: "mock_token_" + result[0].id, role: result[0].role, id: result[0].id });
-            } else {
-                res.status(401).json({ message: "รหัสผ่านไม่ถูกต้อง" });
-            }
-        } else {
-            res.status(404).json({ message: "ไม่พบชื่อผู้ใช้งานนี้" });
-        }
-    });
+    const { username, password } = req.body;
+    const sql = "SELECT * FROM users WHERE username = ?";
+    db.query(sql, [username], async (err, result) => {
+        if (err) return res.status(500).json(err);
+        if (result.length > 0) {
+            const match = await bcrypt.compare(password, result[0].password);
+            if (match) {
+                res.json({ token: "mock_token_" + result[0].id, role: result[0].role, id: result[0].id });
+            } else {
+                res.status(401).json({ message: "รหัสผ่านไม่ถูกต้อง" });
+            }
+        } else {
+            res.status(404).json({ message: "ไม่พบชื่อผู้ใช้งานนี้" });
+        }
+    });
 });
 
 app.get('/api/my-orders/:userId', (req, res) => {
-    const { userId } = req.params;
-    const sql = "SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC";
-    db.query(sql, [userId], (err, result) => {
-        if (err) return res.status(500).json(err);
-        res.json(result);
-    });
+    const { userId } = req.params;
+    const sql = "SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC";
+    db.query(sql, [userId], (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json(result);
+    });
 });
 
 app.post('/api/register', async (req, res) => {
-    const { username, password } = req.body;
-    try {
-        const hashedPassword = await bcrypt.hash(password, saltRounds);
-        const checkUser = "SELECT * FROM users WHERE username = ?";
-        db.query(checkUser, [username], (err, result) => {
-            if (result.length > 0) return res.status(400).json({ message: "ชื่อนี้มีคนใช้แล้ว" });
-            const sql = "INSERT INTO users (username, password, role) VALUES (?, ?, 'user')";
-            db.query(sql, [username, hashedPassword], (err, result) => {
-                if (err) return res.status(500).json(err);
-                return res.json({ message: "สมัครสมาชิกแบบปลอดภัยสำเร็จ!" });
-            });
-        });
-    } catch (error) { res.status(500).json({ message: "เกิดข้อผิดพลาดในการเข้ารหัส" }); }
+    const { username, password } = req.body;
+    try {
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+        const checkUser = "SELECT * FROM users WHERE username = ?";
+        db.query(checkUser, [username], (err, result) => {
+            if (result.length > 0) return res.status(400).json({ message: "ชื่อนี้มีคนใช้แล้ว" });
+            const sql = "INSERT INTO users (username, password, role) VALUES (?, ?, 'user')";
+            db.query(sql, [username, hashedPassword], (err, result) => {
+                if (err) return res.status(500).json(err);
+                return res.json({ message: "สมัครสมาชิกแบบปลอดภัยสำเร็จ!" });
+            });
+        });
+    } catch (error) { res.status(500).json({ message: "เกิดข้อผิดพลาดในการเข้ารหัส" }); }
 });
 
 app.get('/api/users/:id', (req, res) => {
-  const userId = req.params.id;
-  db.query("SELECT id, username, email, address, phone, profile_picture FROM users WHERE id = ?", [userId], (err, result) => {
-    if (err) return res.status(500).json(err);
-    res.json(result[0]); 
-  });
+  const userId = req.params.id;
+  db.query("SELECT id, username, email, address, phone, profile_picture FROM users WHERE id = ?", [userId], (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json(result[0]); 
+  });
 });
 
 app.put('/api/users/:id', upload.single('profile_picture'), async (req, res) => {
-  const userId = req.params.id;
-  const { username, email, address, phone, password } = req.body;
-  try {
-    let sql = "UPDATE users SET username = ?, email = ?, address = ?, phone = ?";
-    let params = [username, email, address, phone];
-    if (password && password.trim() !== "") {
-      const hashedPassword = await bcrypt.hash(password, 10);
-      sql += ", password = ?";
-      params.push(hashedPassword);
-    }
-    if (req.file) {
-      sql += ", profile_picture = ?";
-      params.push(req.file.path);
-    }
-    sql += " WHERE id = ?";
-    params.push(userId);
-    db.query(sql, params, (err, result) => {
-      if (err) return res.status(500).json(err);
-      res.json({ message: "อัปเดตข้อมูลโปรไฟล์เรียบร้อยแล้ว!" });
-    });
-  } catch (error) { res.status(500).json({ error: "เกิดข้อผิดพลาดในการเข้ารหัสผ่าน" }); }
+  const userId = req.params.id;
+  const { username, email, address, phone, password } = req.body;
+  try {
+    let sql = "UPDATE users SET username = ?, email = ?, address = ?, phone = ?";
+    let params = [username, email, address, phone];
+    if (password && password.trim() !== "") {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      sql += ", password = ?";
+      params.push(hashedPassword);
+    }
+    if (req.file) {
+      sql += ", profile_picture = ?";
+      params.push(req.file.path);
+    }
+    sql += " WHERE id = ?";
+    params.push(userId);
+    db.query(sql, params, (err, result) => {
+      if (err) return res.status(500).json(err);
+      res.json({ message: "อัปเดตข้อมูลโปรไฟล์เรียบร้อยแล้ว!" });
+    });
+  } catch (error) { res.status(500).json({ error: "เกิดข้อผิดพลาดในการเข้ารหัสผ่าน" }); }
 });
 
 const PORT = process.env.PORT || 5000;

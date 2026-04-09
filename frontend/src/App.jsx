@@ -75,7 +75,8 @@ function ProfilePage({ userId }) {
 
   useEffect(() => {
     if (userId) {
-      axios.get(`http://localhost:5000/api/users/${userId}`)
+      // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+      axios.get(`${API_URL}/users/${userId}`)
         .then(res => setProfile({ ...res.data, password: '' })) 
         .catch(err => console.error("ดึงข้อมูลไม่สำเร็จ", err));
     }
@@ -95,7 +96,8 @@ function ProfilePage({ userId }) {
       formData.append('profile_picture', file);
     }
 
-    axios.put(`http://localhost:5000/api/users/${userId}`, formData, {
+    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+    axios.put(`${API_URL}/users/${userId}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     .then(() => {
@@ -198,7 +200,8 @@ function AppContent() {
   const [adminTab, setAdminTab] = useState('report'); 
 
   useEffect(() => {
-    axios.get('http://localhost:5000/api/products').then(res => setProducts(res.data));
+    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+    axios.get(`${API_URL}/products`).then(res => setProducts(res.data));
     if (isLoggedIn) fetchMyOrders();
     fetchOrders(); 
 
@@ -209,7 +212,8 @@ function AppContent() {
   }, [isLoggedIn, userId]);
 
   const fetchOrders = () => {
-    axios.get('http://localhost:5000/api/orders')
+    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+    axios.get(`${API_URL}/orders`)
       .then(res => {
         setOrders(res.data); 
       })
@@ -218,7 +222,8 @@ function AppContent() {
 
   const fetchMyOrders = () => {
     if (!userId) return;
-    axios.get(`http://localhost:5000/api/my-orders/${userId}`)
+    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+    axios.get(`${API_URL}/my-orders/${userId}`)
       .then(res => setMyOrders(res.data))
       .catch(err => console.log("ดึงประวัติสั่งซื้อพลาด:", err));
   };
@@ -271,7 +276,8 @@ function AppContent() {
   
   const deleteOrderHistory = (orderId) => {
     if (window.confirm("คุณต้องการลบประวัติการสั่งซื้อนี้ทิ้งใช่หรือไม่?")) {
-      axios.delete(`http://localhost:5000/api/orders/${orderId}`)
+      // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+      axios.delete(`${API_URL}/orders/${orderId}`)
         .then(() => {
           alert("🗑️ ลบประวัติการสั่งซื้อเรียบร้อยแล้ว");
           fetchMyOrders(); 
@@ -283,7 +289,8 @@ function AppContent() {
 
   const cancelOrder = (orderId) => {
     if (window.confirm("คุณต้องการยกเลิกออเดอร์นี้ใช่หรือไม่?")) {
-      axios.delete(`http://localhost:5000/api/orders/${orderId}`)
+      // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+      axios.delete(`${API_URL}/orders/${orderId}`)
         .then(() => {
           alert("ยกเลิกออเดอร์เรียบร้อยแล้ว");
           fetchMyOrders();
@@ -294,7 +301,8 @@ function AppContent() {
 
   const generatePDF = async (order) => {
     try {
-      const res = await axios.get(`http://localhost:5000/api/orders/${order.id}/items`);
+      // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+      const res = await axios.get(`${API_URL}/orders/${order.id}/items`);
       const items = res.data;
       const doc = new jsPDF();
       doc.addFileToVFS("THSarabunNew.ttf", fontBase64);
@@ -331,11 +339,13 @@ function AppContent() {
   };
 
   const updateOrderStatus = (orderId, newStatus) => {
-    axios.put(`http://localhost:5000/api/orders/${orderId}`, { status: newStatus })
+    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+    axios.put(`${API_URL}/orders/${orderId}`, { status: newStatus })
       .then(() => {
         alert("อัปเดตสถานะเป็น: " + newStatus);
         fetchOrders(); 
-        axios.get('http://localhost:5000/api/products').then(res => setProducts(res.data)); 
+        // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+        axios.get(`${API_URL}/products`).then(res => setProducts(res.data)); 
       })
       .catch(err => alert("อัปเดตพลาด: " + err));
   };
@@ -344,7 +354,8 @@ function AppContent() {
     e.preventDefault();
     const username = e.target.username.value;
     const password = e.target.password.value;
-    axios.post('http://localhost:5000/api/login', { username, password })
+    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+    axios.post(`${API_URL}/login`, { username, password })
     .then(res => {
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('role', res.data.role);
@@ -364,7 +375,8 @@ function AppContent() {
     const password = e.target.password.value;
     const confirmPassword = e.target.confirmPassword.value;
     if (password !== confirmPassword) return alert("รหัสผ่านไม่ตรงกันครับ!");
-    axios.post('http://localhost:5000/api/register', { username, password })
+    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+    axios.post(`${API_URL}/register`, { username, password })
       .then(res => { alert(res.data.message); navigate('/login'); })
       .catch(err => alert(err.response.data.message || "เกิดข้อผิดพลาด"));
   };
@@ -403,7 +415,8 @@ function AppContent() {
   const checkout = () => {
     if (cart.length === 0) return alert("ตะกร้าว่างเปล่า!");
     const orderData = { total_price: calculateTotal(), items_count: flatCart.length, user_id: userId, cartItems: flatCart };
-    axios.post('http://localhost:5000/api/orders', orderData)
+    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+    axios.post(`${API_URL}/orders`, orderData)
       .then(res => {
         setCurrentOrderId(res.data.orderId);
         setShowPayModal(true);
@@ -418,7 +431,8 @@ function AppContent() {
     formData.append('address', address);
     formData.append('phone', phone);
     formData.append('slip', slipFile);
-    axios.put(`http://localhost:5000/api/orders/pay/${currentOrderId}`, formData)
+    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+    axios.put(`${API_URL}/orders/pay/${currentOrderId}`, formData)
       .then(() => {
         alert("ส่งหลักฐานเรียบร้อย! รอแอดมินตรวจสอบนะครับ");
         setCart([]);
@@ -434,10 +448,12 @@ function AppContent() {
 
   const deleteProduct = (id) => {
     if (window.confirm("คุณแน่ใจนะว่าจะลบ?")) {
-      axios.delete(`http://localhost:5000/api/products/${id}`)
+      // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+      axios.delete(`${API_URL}/products/${id}`)
         .then(() => {
           alert("ลบเรียบร้อย!");
-          axios.get('http://localhost:5000/api/products').then(res => setProducts(res.data));
+          // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+          axios.get(`${API_URL}/products`).then(res => setProducts(res.data));
         });
     }
   };
@@ -455,18 +471,22 @@ function AppContent() {
     if (file) formData.append('image', file); 
 
     if (editingProduct) {
-      axios.put(`http://localhost:5000/api/products/${editingProduct.id}`, formData)
+      // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+      axios.put(`${API_URL}/products/${editingProduct.id}`, formData)
         .then(() => {
           alert("แก้ไขเรียบร้อย!");
           setEditingProduct(null); setFile(null); e.target.reset(); 
-          axios.get('http://localhost:5000/api/products').then(res => setProducts(res.data));
+          // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+          axios.get(`${API_URL}/products`).then(res => setProducts(res.data));
         });
     } else {
-      axios.post('http://localhost:5000/api/products', formData)
+      // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+      axios.post(`${API_URL}/products`, formData)
         .then(() => {
           alert("เพิ่มสินค้าแล้ว!");
           setFile(null); e.target.reset();
-          axios.get('http://localhost:5000/api/products').then(res => setProducts(res.data));
+          // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+          axios.get(`${API_URL}/products`).then(res => setProducts(res.data));
         });
     }
   };
@@ -579,7 +599,9 @@ function AppContent() {
                     <button onClick={() => removeFromCart(item.id)} style={{ background: 'none', border: 'none', color: '#ff7675', fontSize: '18px' }}>✖</button>
                   </div>
                 ))}
-                <div style={{ marginTop: '30px', textAlign: 'right' }}><h2>รวม: <span style={{ color: '#e74c3c' }}>฿{calculateTotal().toLocaleString()}</span></h2><button onClick={() => { if (isLoggedIn) { axios.get(`http://localhost:5000/api/users/${userId}`).then(res => { setAddress(res.data.address || ''); setPhone(res.data.phone || ''); checkout(); }); } else { navigate('/login'); } }} style={{ padding: '15px 40px', background: '#2ecc71', color: 'white', border: 'none', borderRadius: '5px', fontSize: '18px', fontWeight: 'bold' }}>{isLoggedIn ? "✅ ยืนยันการสั่งซื้อ" : "🔑 ล็อกอินเพื่อสั่งซื้อ"}</button></div>
+                <div style={{ marginTop: '30px', textAlign: 'right' }}><h2>รวม: <span style={{ color: '#e74c3c' }}>฿{calculateTotal().toLocaleString()}</span></h2><button onClick={() => { if (isLoggedIn) { 
+                  // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+                  axios.get(`${API_URL}/users/${userId}`).then(res => { setAddress(res.data.address || ''); setPhone(res.data.phone || ''); checkout(); }); } else { navigate('/login'); } }} style={{ padding: '15px 40px', background: '#2ecc71', color: 'white', border: 'none', borderRadius: '5px', fontSize: '18px', fontWeight: 'bold' }}>{isLoggedIn ? "✅ ยืนยันการสั่งซื้อ" : "🔑 ล็อกอินเพื่อสั่งซื้อ"}</button></div>
               </div>
             )}
           </div>
