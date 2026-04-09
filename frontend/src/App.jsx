@@ -6,6 +6,7 @@ import autoTable from 'jspdf-autotable';
 import { fontBase64 } from './ThaiFont';
 import * as XLSX from 'xlsx';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import API_URL from './config'; // หรือใส่ path ให้ตรงกับที่ไฟล์ config.js อยู่
 
 // 🟢 [เพิ่มส่วนนี้]: คอมโพเนนต์สำหรับหน้ารายละเอียดสินค้า
 function ProductDetailPage({ products, addToCart }) {

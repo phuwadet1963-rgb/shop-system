@@ -13,7 +13,11 @@ const SECRET_KEY = "my_super_secret_key";
 const saltRounds = 10; 
 
 const app = express();
-app.use(cors());
+app.use(cors());app.use(cors({
+  origin: "*", // หรือใส่ URL ของหน้าเว็บคุณที่จะทำในสเต็ปถัดไป
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
 app.use(express.json());
 
 // 🟢 [สำคัญ]: ใส่ข้อมูล Cloudinary ของคุณที่นี่
