@@ -550,7 +550,7 @@ function AppContent() {
       <Route path="/" element={
         <div style={{ backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
           <div style={{ textAlign: 'center', padding: '60px 20px', background: 'linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)', color: 'white' }}>
-            <h1 style={{ fontSize: '3.5rem', margin: 0, fontWeight: '800', letterSpacing: '-1px' }}>🛍️ BIG SHOP</h1>
+            <h1 style={{ fontSize: '3.5rem', margin: 0, fontWeight: '800', letterSpacing: '-1px' }}>🛍️ BIG1919 SHOP</h1>
             <p style={{ fontSize: '1.3rem', opacity: 0.9, marginTop: '10px' }}>"ช้อปใหญ่ จ่ายน้อย สอยทุกความคุ้ม!"</p>
             <div style={{ marginTop: '30px' }}><input type="text" placeholder="🔍 ค้นหาสินค้าที่ใช่สำหรับคุณ..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '15px 25px', width: '85%', maxWidth: '600px', borderRadius: '50px', border: 'none', fontSize: '18px', boxShadow: '0 10px 20px rgba(0,0,0,0.2)' }} /></div>
           </div>
