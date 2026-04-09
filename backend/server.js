@@ -1,11 +1,11 @@
 const express = require('express');
-const mysql = require('mysql');
+const mysql = require('mysql2');
 const cors = require('cors');
 const multer = require('multer'); 
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 
-// 🟢 [แก้ไข]: นำเข้า Cloudinary แทน fs และ path เดิม
+// 🟢 Cloudinary Setup
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
@@ -16,33 +16,89 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 🟢 [แก้ไข]: ตั้งค่าการเชื่อมต่อกับ Cloudinary (นำข้อมูลจากหน้าเว็บ Cloudinary มาใส่ตรงนี้)
+// 🟢 [สำคัญ]: ใส่ข้อมูล Cloudinary ของคุณที่นี่
 cloudinary.config({ 
-  cloud_name: 'ใส่_CLOUD_NAME_ของคุณ', 
-  api_key: 'ใส่_API_KEY_ของคุณ', 
-  api_secret: 'ใส่_API_SECRET_ของคุณ' 
+  cloud_name: 'dqpr5ll6u', 
+  api_key: '516198845634898', 
+  api_secret: 'PAoBcSz-UNtJ_N-OB7byupF1lL8' 
 });
 
-// 🟢 [แก้ไข]: เปลี่ยนที่เก็บรูปจากโฟลเดอร์ในเครื่อง เป็น Cloudinary
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-    folder: 'big_shop_uploads', // ชื่อโฟลเดอร์บน Cloud
+    folder: 'big_shop_uploads',
     allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
   },
 });
 const upload = multer({ storage: storage }); 
 
+// 🔵 [แก้ไขแล้ว]: เชื่อมต่อกับ Aiven Cloud MySQL
 const db = mysql.createConnection({
-    host: "localhost",
-    user: "root",
-    password: "",
-    database: "my_shop"
+    host: "mysql-186094ec-phuwadet1963-cbfd.i.aivencloud.com",
+    port: 23049,
+    user: "avnadmin",
+    password: "AVNS_Xis-juaAR5aKrlFY-3w", // รหัสผ่านจากรูปของคุณ
+    database: "defaultdb",
+    ssl: {
+        rejectUnauthorized: false // Aiven บังคับใช้ SSL
+    }
 });
 
-// --- 4. API (CRUD) ---
+db.connect((err) => {
+    if (err) {
+        console.error("❌ เชื่อมต่อฐานข้อมูลล้มเหลว:", err);
+        return;
+    }
+    console.log("✅ เชื่อมต่อฐานข้อมูล Aiven Cloud สำเร็จ!");
+    
+    // 🟠 [แถมให้]: สร้างตารางอัตโนมัติถ้ายังไม่มี
+    const createTables = `
+    CREATE TABLE IF NOT EXISTS users (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(255) UNIQUE,
+        password VARCHAR(255),
+        role VARCHAR(50),
+        email VARCHAR(255),
+        address TEXT,
+        phone VARCHAR(20),
+        profile_picture TEXT
+    );
+    CREATE TABLE IF NOT EXISTS products (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255),
+        price DECIMAL(10,2),
+        stock INT,
+        description TEXT,
+        image TEXT,
+        category VARCHAR(100)
+    );
+    CREATE TABLE IF NOT EXISTS orders (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        total_price DECIMAL(10,2),
+        items_count INT,
+        user_id INT,
+        status VARCHAR(50),
+        address TEXT,
+        phone VARCHAR(20),
+        slip_image TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS order_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id INT,
+        product_id INT,
+        quantity INT
+    );`;
 
-// ดึงสินค้าทั้งหมด (ห้ามแก้ไข)
+    // รันคำสั่งสร้างตาราง (แยกทีละคำสั่งเพื่อความชัวร์)
+    const sqlStatements = createTables.split(';').filter(s => s.trim());
+    sqlStatements.forEach(sql => {
+        db.query(sql, (err) => { if (err) console.log("แจ้งเตือนการสร้างตาราง:", err.message); });
+    });
+});
+
+// --- API (CRUD) ส่วนที่เหลือเหมือนเดิมที่คุณให้มา ---
+
 app.get('/api/products', (req, res) => {
     db.query("SELECT * FROM products", (err, result) => {
         if (err) return res.status(500).json(err);
@@ -50,12 +106,9 @@ app.get('/api/products', (req, res) => {
     });
 });
 
-// [CREATE] เพิ่มสินค้าใหม่
 app.post('/api/products', upload.single('image'), (req, res) => {
   const { name, price, stock, description, category } = req.body; 
-  // 🟢 [แก้ไข]: เปลี่ยนจาก req.file.filename เป็น req.file.path (เพื่อให้ได้ URL เต็ม)
   const image = req.file ? req.file.path : null;
-
   const sql = "INSERT INTO products (name, price, stock, description, image, category) VALUES (?, ?, ?, ?, ?, ?)";
   db.query(sql, [name, price, stock, description, image, category], (err, result) => {
     if (err) return res.status(500).json(err);
@@ -63,31 +116,23 @@ app.post('/api/products', upload.single('image'), (req, res) => {
   });
 });
 
-// [UPDATE] แก้ไขสินค้า
 app.put('/api/products/:id', upload.single('image'), (req, res) => {
     const { id } = req.params;
     const { name, price, stock, description, category } = req.body; 
-
     let sql = "UPDATE products SET name=?, price=?, stock=?, description=?, category=? WHERE id=?";
     let params = [name, price, stock, description, category, id];
-
     if (req.file) {
-        // 🟢 [แก้ไข]: เปลี่ยนจาก req.file.filename เป็น req.file.path
         sql = "UPDATE products SET name=?, price=?, stock=?, description=?, category=?, image=? WHERE id=?";
         params = [name, price, stock, description, category, req.file.path, id];
     }
-
     db.query(sql, params, (err, result) => {
         if (err) return res.status(500).json(err);
         res.json({ message: "แก้ไขสินค้าสำเร็จ" });
     });
 });
 
-// [DELETE] ลบสินค้า (ห้ามแก้ไขส่วน SQL)
 app.delete('/api/products/:id', (req, res) => {
     const { id } = req.params;
-    // หมายเหตุ: การลบรูปบน Cloudinary ต้องใช้ Public ID หากต้องการประหยัดพื้นที่ 
-    // แต่ในขั้นต้นนี้ เราจะเน้นลบข้อมูลใน Database ให้สำเร็จก่อนครับ
     const sql = "DELETE FROM products WHERE id = ?";
     db.query(sql, [id], (err, result) => {
         if (err) return res.status(500).json(err);
@@ -95,7 +140,6 @@ app.delete('/api/products/:id', (req, res) => {
     });
 });
 
-// [POST] สร้างออเดอร์ใหม่ (ห้ามแก้ไข)
 app.post('/api/orders', (req, res) => {
   const { total_price, items_count, user_id, cartItems } = req.body;
   const sqlOrder = "INSERT INTO orders (total_price, items_count, user_id, status) VALUES (?, ?, ?, 'รอดำเนินการ')";
@@ -113,7 +157,6 @@ app.post('/api/orders', (req, res) => {
   });
 });
 
-// ดึงออเดอร์ทั้งหมด (ห้ามแก้ไข)
 app.get('/api/orders', (req, res) => {
     const sql = "SELECT * FROM orders ORDER BY created_at DESC";
     db.query(sql, (err, result) => {
@@ -122,7 +165,6 @@ app.get('/api/orders', (req, res) => {
     });
 });
 
-// อัปเดตสถานะออเดอร์ (ห้ามแก้ไข)
 app.put('/api/orders/:id', (req, res) => {
   const orderId = req.params.id;
   const { status } = req.body;
@@ -143,13 +185,10 @@ app.put('/api/orders/:id', (req, res) => {
   });
 });
 
-// API ส่งหลักฐานการชำระเงิน (อัปเดต URL รูปสลิป)
 app.put('/api/orders/pay/:id', upload.single('slip'), (req, res) => {
     const { id } = req.params;
     const { address, phone } = req.body;
-    // 🟢 [แก้ไข]: เปลี่ยนเป็น req.file.path
     const slip_image = req.file ? req.file.path : null;
-
     const sql = "UPDATE orders SET address = ?, phone = ?, slip_image = ?, status = 'ชำระเงินแล้ว' WHERE id = ?";
     db.query(sql, [address, phone, slip_image, id], (err, result) => {
         if (err) return res.status(500).json(err);
@@ -157,7 +196,6 @@ app.put('/api/orders/pay/:id', upload.single('slip'), (req, res) => {
     });
 });
 
-// ลบประวัติออเดอร์ (ห้ามแก้ไข)
 app.delete('/api/orders/:id', (req, res) => {
   const { id } = req.params;
   const deleteItemsSql = "DELETE FROM order_items WHERE order_id = ?";
@@ -171,7 +209,6 @@ app.delete('/api/orders/:id', (req, res) => {
   });
 });
 
-// ดึงรายละเอียดสินค้าในออเดอร์ (ห้ามแก้ไข)
 app.get('/api/orders/:id/items', (req, res) => {
   const orderId = req.params.id;
   const sql = `SELECT p.name, p.price, oi.quantity FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?`;
@@ -181,7 +218,6 @@ app.get('/api/orders/:id/items', (req, res) => {
   });
 });
 
-// ระบบล็อกอิน (ห้ามแก้ไข)
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
     const sql = "SELECT * FROM users WHERE username = ?";
@@ -200,7 +236,6 @@ app.post('/api/login', (req, res) => {
     });
 });
 
-// ดึงประวัติสั่งซื้อของผู้ใช้ (ห้ามแก้ไข)
 app.get('/api/my-orders/:userId', (req, res) => {
     const { userId } = req.params;
     const sql = "SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC";
@@ -210,7 +245,6 @@ app.get('/api/my-orders/:userId', (req, res) => {
     });
 });
 
-// สมัครสมาชิก (ห้ามแก้ไข)
 app.post('/api/register', async (req, res) => {
     const { username, password } = req.body;
     try {
@@ -227,7 +261,6 @@ app.post('/api/register', async (req, res) => {
     } catch (error) { res.status(500).json({ message: "เกิดข้อผิดพลาดในการเข้ารหัส" }); }
 });
 
-// ดึงข้อมูลโปรไฟล์ (ห้ามแก้ไข)
 app.get('/api/users/:id', (req, res) => {
   const userId = req.params.id;
   db.query("SELECT id, username, email, address, phone, profile_picture FROM users WHERE id = ?", [userId], (err, result) => {
@@ -236,7 +269,6 @@ app.get('/api/users/:id', (req, res) => {
   });
 });
 
-// อัปเดตโปรไฟล์ (อัปเดต URL รูปโปรไฟล์)
 app.put('/api/users/:id', upload.single('profile_picture'), async (req, res) => {
   const userId = req.params.id;
   const { username, email, address, phone, password } = req.body;
@@ -249,7 +281,6 @@ app.put('/api/users/:id', upload.single('profile_picture'), async (req, res) => 
       params.push(hashedPassword);
     }
     if (req.file) {
-      // 🟢 [แก้ไข]: เปลี่ยนเป็น req.file.path
       sql += ", profile_picture = ?";
       params.push(req.file.path);
     }
@@ -262,4 +293,5 @@ app.put('/api/users/:id', upload.single('profile_picture'), async (req, res) => 
   } catch (error) { res.status(500).json({ error: "เกิดข้อผิดพลาดในการเข้ารหัสผ่าน" }); }
 });
 
-app.listen(5000, () => console.log("หลังบ้านพร้อมที่พอร์ต 5000 (Cloudinary Mode)!"));
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`🚀 เซิร์ฟเวอร์รันที่พอร์ต ${PORT} (Aiven Cloud Mode)`));
