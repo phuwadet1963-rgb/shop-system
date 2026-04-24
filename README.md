@@ -53,8 +53,8 @@ shop-system/
 ### **1.Clone โปรเจกต์:**
 * *git clone https://github.com/phuwadet1963-rgb/shop-system.git
 ### **2.ติดตั้ง Dependencies:**
-* *ฝั่ง Backend: cd backend && npm install
-* *ฝั่ง Frontend: cd frontend && npm install
+* *ฝั่ง Backend: cd backend && npm install**
+* *ฝั่ง Frontend: cd frontend && npm install**
 
 ### **3.ตั้งค่า .env: สร้างไฟล์ .env ในโฟลเดอร์ backend**
 
