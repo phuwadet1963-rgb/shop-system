@@ -23,6 +23,7 @@ Render: สำหรับโฮสต์หลังบ้าน (Backend)
 Aiven.io: บริการฐานข้อมูล MySQL ออนไลน์
 
 📂 โครงสร้างโฟลเดอร์ (Project Structure)
+
 Plaintext
 shop-system/
 ├── backend/            # ส่วนของระบบหลังบ้าน (Node.js)
