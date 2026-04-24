@@ -50,13 +50,13 @@ shop-system/
 ---
 
 ## 🚀 วิธีการติดตั้งและรันโปรเจกต์ (Installation)
-*1.Clone โปรเจกต์:
-git clone https://github.com/phuwadet1963-rgb/shop-system.git
-*2.ติดตั้ง Dependencies:
-ฝั่ง Backend: cd backend && npm install
-ฝั่ง Frontend: cd frontend && npm install
+### **1.Clone โปรเจกต์:**
+* *git clone https://github.com/phuwadet1963-rgb/shop-system.git
+### **2.ติดตั้ง Dependencies:**
+* *ฝั่ง Backend: cd backend && npm install
+* *ฝั่ง Frontend: cd frontend && npm install
 
-## 3.ตั้งค่า .env: สร้างไฟล์ .env ในโฟลเดอร์ backend
+### **3.ตั้งค่า .env: สร้างไฟล์ .env ในโฟลเดอร์ backend**
 
 ```text
 DB_HOST=your_host
@@ -67,12 +67,12 @@ DB_PORT=23049
 SECRET_KEY=your_secret
 ```
 
-*4.รันโปรเจกต์:
+### **4.รันโปรเจกต์:**
 Backend: node server.js
 Frontend: npm run dev
 
-##📝 ข้อมูลผู้พัฒนา
-*ชื่อ: Big
-*สถาบัน: Rajamangala University of Technology Isan (RMUTI)
-*สาขา: Information Systems (IS)
+## 📝 ข้อมูลผู้พัฒนา
+* *ชื่อ: Big
+* *สถาบัน: Rajamangala University of Technology Isan (RMUTI)
+* *สาขา: Information Systems (IS)
 
