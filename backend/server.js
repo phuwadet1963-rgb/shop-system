@@ -319,5 +319,26 @@ app.put('/api/users/:id', upload.single('profile_picture'), async (req, res) => 
   } catch (error) { res.status(500).json({ error: "เกิดข้อผิดพลาดในการเข้ารหัสผ่าน" }); }
 });
 
+// 1. ดึงรายชื่อผู้ใช้ทั้งหมด
+app.get('/api/users', (req, res) => {
+  db.query('SELECT id, username, email, role, status FROM users', (err, results) => {
+    if (err) return res.status(500).json(err);
+    res.json(results);
+  });
+});
+
+// 2. แก้ไขข้อมูล/ระงับบัญชี (Update status หรือ role)
+app.put('/api/users/:id', (req, res) => {
+  const { role, status } = req.body;
+  db.query(
+    'UPDATE users SET role = ?, status = ? WHERE id = ?',
+    [role, status, req.params.id],
+    (err, result) => {
+      if (err) return res.status(500).json(err);
+      res.json({ message: 'อัปเดตสถานะสำเร็จ' });
+    }
+  );
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 เซิร์ฟเวอร์รันที่พอร์ต ${PORT} (Aiven Cloud Mode)`));

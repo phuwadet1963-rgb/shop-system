@@ -460,6 +460,47 @@ function AppContent() {
 
   const selectToEdit = (product) => { setEditingProduct(product); };
 
+  const updateUser = async (id, data) => {
+  try {
+    // 1. ส่ง Request ไปที่ Backend (เปลี่ยน URL ให้ตรงกับที่คุณใช้จริงบน Render)
+    const response = await axios.put(`https://shop-system-backend.onrender.com/api/users/${id}`, data, {
+      headers: {
+        // ถ้าคุณมีระบบ Token ให้ใส่ตรงนี้เพื่อให้ Backend รู้ว่าเป็น Admin สั่ง
+        Authorization: `Bearer ${localStorage.getItem('token')}`
+      }
+    });
+
+    if (response.status === 200) {
+      alert('✅ อัปเดตข้อมูลผู้ใช้สำเร็จ');
+      
+      // 2. เมื่ออัปเดตที่ฐานข้อมูลสำเร็จแล้ว ให้ดึงข้อมูลผู้ใช้มาโชว์ใหม่ (Refresh)
+      // สมมติว่าคุณมีฟังก์ชัน fetchUsers() ที่ใช้ดึงรายชื่ออยู่แล้ว
+      fetchUsers(); 
+    }
+  } catch (error) {
+    console.error('Error updating user:', error);
+    alert('❌ เกิดข้อผิดพลาด: ' + (error.response?.data?.message || 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้'));
+  }
+};
+
+const [users, setUsers] = useState([]);
+
+const fetchUsers = async () => {
+  try {
+    const response = await axios.get('https://shop-system-backend.onrender.com/api/users');
+    setUsers(response.data);
+  } catch (error) {
+    console.error('Fetch users error:', error);
+  }
+};
+
+// เรียกใช้ตอนเปิดหน้าเว็บครั้งแรก
+useEffect(() => {
+  if (adminTab === 'users') {
+    fetchUsers();
+  }
+}, [adminTab]);
+
   const addOrUpdateProduct = (e) => {
     e.preventDefault();
     const formData = new FormData();
@@ -537,14 +578,26 @@ function AppContent() {
     {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.5)', zIndex: 998, backdropFilter: 'blur(3px)' }} />}
 
     <div style={{ position: 'fixed', top: 0, left: isSidebarOpen ? 0 : '-300px', width: '260px', height: '100vh', background: '#ffffff', boxShadow: '4px 0 15px rgba(0,0,0,0.1)', transition: 'left 0.3s ease-in-out', zIndex: 999, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '20px', background: '#2c3e50', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h3 style={{ margin: 0 }}>เมนูหลัก</h3><button onClick={() => setIsSidebarOpen(false)} style={{ background: 'none', border: 'none', color: 'white', fontSize: '20px', cursor: 'pointer' }}>✖</button></div>
-      <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-        {isLoggedIn && userRole !== 'admin' && <Link to="/profile" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration: 'none', color: '#2c3e50', fontSize: '18px', fontWeight: 'bold', padding: '10px', background: '#f8f9fa', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>👤 โปรไฟล์ของฉัน</Link>}
-        <Link to="/" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration: 'none', color: '#2c3e50', fontSize: '18px', fontWeight: 'bold', padding: '10px', background: '#f8f9fa', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>🏠 หน้าแรก</Link>
-        {userRole !== 'admin' && <><Link to="/cart" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration: 'none', color: '#2c3e50', fontSize: '18px', fontWeight: 'bold', padding: '10px', background: '#f8f9fa', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>🛒 ตะกร้าสินค้า <span style={{ background: '#e74c3c', color: 'white', padding: '2px 8px', borderRadius: '20px', fontSize: '14px' }}>{cart.length}</span></Link>{isLoggedIn && <Link to="/my-orders" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration: 'none', color: '#2c3e50', fontSize: '18px', fontWeight: 'bold', padding: '10px', background: '#f8f9fa', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>🧾 ประวัติการสั่งซื้อ</Link>}</>}
-        {isLoggedIn && userRole === 'admin' && <div style={{ background: '#e8f6f3', borderRadius: '8px', padding: '15px 10px', marginTop: '10px', border: '1px solid #1abc9c' }}><div style={{ color: '#16a085', fontSize: '16px', fontWeight: 'bold', marginBottom: '10px', paddingLeft: '5px' }}>⚙️ ระบบหลังบ้าน</div><div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}><button onClick={() => { setAdminTab('report'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'report' ? '#1abc9c' : 'transparent', color: adminTab === 'report' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>📊 รายงานสถิติ</button><button onClick={() => { setAdminTab('add'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'add' ? '#1abc9c' : 'transparent', color: adminTab === 'add' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>➕ เพิ่มสินค้าใหม่</button><button onClick={() => { setAdminTab('stock'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'stock' ? '#1abc9c' : 'transparent', color: adminTab === 'stock' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>📦 จัดการสต็อก</button><button onClick={() => { setAdminTab('orders'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'orders' ? '#1abc9c' : 'transparent', color: adminTab === 'orders' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>🧾 รายการสั่งซื้อ</button></div></div>}
+  <div style={{ padding: '20px', background: '#2c3e50', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h3 style={{ margin: 0 }}>เมนูหลัก</h3><button onClick={() => setIsSidebarOpen(false)} style={{ background: 'none', border: 'none', color: 'white', fontSize: '20px', cursor: 'pointer' }}>✖</button></div>
+  <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+    {isLoggedIn && userRole !== 'admin' && <Link to="/profile" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration: 'none', color: '#2c3e50', fontSize: '18px', fontWeight: 'bold', padding: '10px', background: '#f8f9fa', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>👤 โปรไฟล์ของฉัน</Link>}
+    <Link to="/" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration: 'none', color: '#2c3e50', fontSize: '18px', fontWeight: 'bold', padding: '10px', background: '#f8f9fa', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>🏠 หน้าแรก</Link>
+    {userRole !== 'admin' && <><Link to="/cart" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration: 'none', color: '#2c3e50', fontSize: '18px', fontWeight: 'bold', padding: '10px', background: '#f8f9fa', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>🛒 ตะกร้าสินค้า <span style={{ background: '#e74c3c', color: 'white', padding: '2px 8px', borderRadius: '20px', fontSize: '14px' }}>{cart.length}</span></Link>{isLoggedIn && <Link to="/my-orders" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration: 'none', color: '#2c3e50', fontSize: '18px', fontWeight: 'bold', padding: '10px', background: '#f8f9fa', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>🧾 ประวัติการสั่งซื้อ</Link>}</>}
+    {isLoggedIn && userRole === 'admin' && (
+      <div style={{ background: '#e8f6f3', borderRadius: '8px', padding: '15px 10px', marginTop: '10px', border: '1px solid #1abc9c' }}>
+        <div style={{ color: '#16a085', fontSize: '16px', fontWeight: 'bold', marginBottom: '10px', paddingLeft: '5px' }}>⚙️ ระบบหลังบ้าน</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+          <button onClick={() => { setAdminTab('report'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'report' ? '#1abc9c' : 'transparent', color: adminTab === 'report' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>📊 รายงานสถิติ</button>
+          <button onClick={() => { setAdminTab('add'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'add' ? '#1abc9c' : 'transparent', color: adminTab === 'add' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>➕ เพิ่มสินค้าใหม่</button>
+          <button onClick={() => { setAdminTab('stock'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'stock' ? '#1abc9c' : 'transparent', color: adminTab === 'stock' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>📦 จัดการสต็อก</button>
+          <button onClick={() => { setAdminTab('orders'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'orders' ? '#1abc9c' : 'transparent', color: adminTab === 'orders' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>🧾 รายการสั่งซื้อ</button>
+          {/* 🟢 [เพิ่ม]: เมนูจัดการผู้ใช้ */}
+          <button onClick={() => { setAdminTab('users'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'users' ? '#1abc9c' : 'transparent', color: adminTab === 'users' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>👥 จัดการผู้ใช้</button>
+        </div>
       </div>
-    </div>
+    )}
+  </div>
+</div>
 
     <Routes>
       <Route path="/" element={
@@ -657,7 +710,7 @@ function AppContent() {
               <div style={{ background: 'white', padding: '20px', borderRadius: '10px', marginBottom: '30px' }}><h3 style={{ marginTop: 0 }}>📈 สถิติยอดขาย</h3><div style={{ width: '100%', height: 300 }}><ResponsiveContainer><BarChart data={Object.values(orders.reduce((acc, order) => { if (order.status !== 'ยกเลิก' && order.status !== 'รอดำเนินการ') { const date = new Date(order.created_at).toLocaleDateString('th-TH'); if (!acc[date]) acc[date] = { name: date, ยอดขาย: 0 }; acc[date].ยอดขาย += Number(order.total_price); } return acc; }, {}))}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Legend /><Bar dataKey="ยอดขาย" fill="#3498db" /></BarChart></ResponsiveContainer></div></div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
                 <div style={{ background: '#2ecc71', color: 'white', padding: '20px', borderRadius: '15px' }}><p>💰 ยอดขาย</p><h2>฿{totalSales.toLocaleString()}</h2></div>
-                <div style={{ background: '#f1c40f', color: 'white', padding: '20px', borderRadius: '15px' }}><p>⏳ รอตลอดสอบ</p><h2>{pendingOrders}</h2></div>
+                <div style={{ background: '#f1c40f', color: 'white', padding: '20px', borderRadius: '15px' }}><p>⏳ รอตรวจสอบ</p><h2>{pendingOrders}</h2></div>
                 <div style={{ background: '#3498db', color: 'white', padding: '20px', borderRadius: '15px' }}><p>✅ ส่งแล้ว</p><h2>{completedOrders}</h2></div>
                 <div style={{ background: '#9b59b6', color: 'white', padding: '20px', borderRadius: '15px' }}><p>👤 ลูกค้า</p><h2>{totalUsers}</h2></div>
               </div>
@@ -688,27 +741,156 @@ function AppContent() {
             </div>
           )}
           {adminTab === 'orders' && (
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}><h3>🧾 รายการสั่งซื้อ</h3><div><button onClick={exportToExcel} style={{ background: '#27ae60', color: 'white', border: 'none', padding: '10px' }}>📊 Excel</button><button onClick={exportToPDF} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '10px', marginLeft: '5px' }}>📄 PDF</button></div></div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white' }}>
-                <thead><tr style={{ background: '#2c3e50', color: 'white' }}><th style={{ padding: '12px' }}>ออเดอร์</th><th>ราคารวม</th><th>หลักฐาน</th><th>สถานะ</th><th>พิมพ์</th></tr></thead>
-                <tbody>
-                  {orders.map(order => (
-                    <tr key={order.id} style={{ textAlign: 'center', borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: '12px' }}>#{order.id} <button onClick={() => alert(`📍 ${order.address}\n📞 ${order.phone}`)} style={{ background: '#34495e', color: 'white', border: 'none', borderRadius: '50%', width: '22px' }}>i</button></td>
-                      <td>฿{order.total_price}</td>
-                      <td>
-                        {/* 🟢 [แก้ไข]: เปลี่ยนรูปสลิปให้ดึงจาก Cloud URL (order.slip_image) */}
-                        {order.slip_image ? <button onClick={() => window.open(order.slip_image, '_blank')} style={{ background: '#9b59b6', color: 'white', border: 'none', padding: '5px' }}>🖼️ ดูสลิป</button> : <span style={{ color: '#999' }}>ยังไม่ส่ง</span>}
-                      </td>
-                      <td><select value={order.status} onChange={(e) => updateOrderStatus(order.id, e.target.value)} style={{ padding: '5px', borderRadius: '15px', background: order.status === 'จัดส่งแล้ว' ? '#55efc4' : '#ffeaa7' }}><option value="รอดำเนินการ">รอดำเนินการ</option><option value="ชำระเงินแล้ว">ชำระเงินแล้ว</option><option value="จัดส่งแล้ว">จัดส่งแล้ว</option><option value="ยกเลิก">ยกเลิก</option></select></td>
-                      <td><button onClick={() => generatePDF(order)} style={{ background: '#34495e', color: 'white', border: 'none', padding: '5px' }}>🖨️ บิล</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+  <div>
+    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
+      <h3>🧾 รายการสั่งซื้อ</h3>
+      <div>
+        <button onClick={exportToExcel} style={{ background: '#27ae60', color: 'white', border: 'none', padding: '10px' }}>📊 Excel</button>
+        <button onClick={exportToPDF} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '10px', marginLeft: '5px' }}>📄 PDF</button>
+      </div>
+    </div>
+    <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white' }}>
+      <thead>
+        <tr style={{ background: '#2c3e50', color: 'white' }}>
+          <th style={{ padding: '12px' }}>ออเดอร์</th>
+          {/* 🟢 [เพิ่ม]: หัวข้อคอลัมน์ใหม่ */}
+          <th>ที่อยู่จัดส่ง</th>
+          <th>ราคารวม</th>
+          <th>หลักฐาน</th>
+          <th>สถานะ</th>
+          <th>พิมพ์</th>
+        </tr>
+      </thead>
+      <tbody>
+        {orders.map(order => (
+          <tr key={order.id} style={{ textAlign: 'center', borderBottom: '1px solid #eee' }}>
+            <td style={{ padding: '12px' }}>#{order.id}</td>
+            
+            {/* 🟢 [เพิ่ม]: คอลัมน์แสดงที่อยู่และเบอร์โทรแยกออกมา */}
+            <td style={{ padding: '10px', fontSize: '13px', textAlign: 'left', maxWidth: '250px' }}>
+              <div style={{ color: '#2c3e50', fontWeight: '500' }}>📍 {order.address}</div>
+              <div style={{ color: '#7f8c8d', fontSize: '12px' }}>📞 {order.phone}</div>
+            </td>
+
+            <td>฿{order.total_price}</td>
+            <td>
+              {order.slip_image ? <button onClick={() => window.open(order.slip_image, '_blank')} style={{ background: '#9b59b6', color: 'white', border: 'none', padding: '5px' }}>🖼️ ดูสลิป</button> : <span style={{ color: '#999' }}>ยังไม่ส่ง</span>}
+            </td>
+            <td>
+              <select value={order.status} onChange={(e) => updateOrderStatus(order.id, e.target.value)} style={{ padding: '5px', borderRadius: '15px', background: order.status === 'จัดส่งแล้ว' ? '#55efc4' : '#ffeaa7' }}>
+                <option value="รอดำเนินการ">รอดำเนินการ</option>
+                <option value="ชำระเงินแล้ว">ชำระเงินแล้ว</option>
+                <option value="กำลังจัดส่ง">กำลังจัดส่ง</option>
+                <option value="จัดส่งแล้ว">จัดส่งแล้ว</option>
+                <option value="ยกเลิก">ยกเลิก</option>
+              </select>
+            </td>
+            <td><button onClick={() => generatePDF(order)} style={{ background: '#34495e', color: 'white', border: 'none', padding: '5px' }}>🖨️ บิล</button></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)}
+
+{adminTab === 'users' && (
+  <div style={{ animation: 'fadeIn 0.3s ease-in-out' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+      <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+        👥 จัดการผู้ใช้ <span style={{ fontSize: '14px', fontWeight: 'normal', color: '#7f8c8d' }}>({users.length} บัญชี)</span>
+      </h3>
+    </div>
+    
+    <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+      <thead>
+        <tr style={{ background: '#2c3e50', color: 'white', textAlign: 'center' }}>
+          <th style={{ padding: '15px' }}>ID</th>
+          <th style={{ textAlign: 'left' }}>ข้อมูลผู้ใช้งาน</th>
+          <th>ระดับสิทธิ์</th>
+          <th>สถานะ</th>
+          <th>การจัดการ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {users.map((user, index) => (
+          <tr 
+            key={user.id} 
+            style={{ 
+              textAlign: 'center', 
+              borderBottom: '1px solid #f1f2f6',
+              backgroundColor: index % 2 === 0 ? '#ffffff' : '#f9f9f9',
+              transition: '0.2s'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f1f2f6'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = index % 2 === 0 ? '#ffffff' : '#f9f9f9'}
+          >
+            <td style={{ padding: '12px', color: '#7f8c8d' }}>{user.id}</td>
+            <td style={{ textAlign: 'left', padding: '12px' }}>
+              <div style={{ fontWeight: 'bold', color: '#2c3e50' }}>{user.username}</div>
+              <div style={{ fontSize: '12px', color: '#95a5a6' }}>{user.email}</div>
+            </td>
+            <td>
+              <select 
+                value={user.role} 
+                onChange={(e) => updateUser(user.id, { role: e.target.value, status: user.status })}
+                style={{ 
+                  padding: '6px 10px', 
+                  borderRadius: '6px', 
+                  border: '1px solid #dcdde1',
+                  backgroundColor: user.role === 'admin' ? '#fff4e6' : 'white',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="customer">👤 Customer</option>
+                <option value="admin">🔑 Admin</option>
+              </select>
+            </td>
+            <td>
+              <span style={{ 
+                padding: '5px 12px', 
+                borderRadius: '20px', 
+                fontSize: '11px',
+                fontWeight: 'bold',
+                textTransform: 'uppercase',
+                background: user.status === 'suspended' ? '#ffeaa7' : '#d1fae5',
+                color: user.status === 'suspended' ? '#d63031' : '#10b981',
+                border: `1px solid ${user.status === 'suspended' ? '#fab1a0' : '#a7f3d0'}`
+              }}>
+                {user.status === 'suspended' ? 'ถูกระงับ' : 'ใช้งานปกติ'}
+              </span>
+            </td>
+            <td>
+              <button 
+                onClick={() => {
+                  const newStatus = user.status === 'active' ? 'suspended' : 'active';
+                  if (window.confirm(`คุณแน่ใจหรือไม่ที่จะ ${newStatus === 'suspended' ? 'ระงับ' : 'ปลดระงับ'} บัญชี ${user.username}?`)) {
+                    updateUser(user.id, { role: user.role, status: newStatus });
+                  }
+                }}
+                style={{ 
+                  background: user.status === 'active' ? '#ff7675' : '#55efc4',
+                  color: 'white', 
+                  border: 'none', 
+                  padding: '7px 14px', 
+                  borderRadius: '6px', 
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                  transition: '0.2s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
+                onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+              >
+                {user.status === 'active' ? '🚫 ระงับการใช้งาน' : '✅ ปลดระงับบัญชี'}
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)}
         </div>
       ) : <Navigate to="/login" replace />} />
     </Routes>
