@@ -460,41 +460,50 @@ function AppContent() {
 
   const selectToEdit = (product) => { setEditingProduct(product); };
 
-  const updateUser = async (id, data) => {
-  try {
-    // 1. ส่ง Request ไปที่ Backend (เปลี่ยน URL ให้ตรงกับที่คุณใช้จริงบน Render)
-    const response = await axios.put(`https://shop-system-backend.onrender.com/api/users/${id}`, data, {
-      headers: {
-        // ถ้าคุณมีระบบ Token ให้ใส่ตรงนี้เพื่อให้ Backend รู้ว่าเป็น Admin สั่ง
-        Authorization: `Bearer ${localStorage.getItem('token')}`
-      }
-    });
+  const [users, setUsers] = useState([]);
 
-    if (response.status === 200) {
-      alert('✅ อัปเดตข้อมูลผู้ใช้สำเร็จ');
-      
-      // 2. เมื่ออัปเดตที่ฐานข้อมูลสำเร็จแล้ว ให้ดึงข้อมูลผู้ใช้มาโชว์ใหม่ (Refresh)
-      // สมมติว่าคุณมีฟังก์ชัน fetchUsers() ที่ใช้ดึงรายชื่ออยู่แล้ว
-      fetchUsers(); 
-    }
-  } catch (error) {
-    console.error('Error updating user:', error);
-    alert('❌ เกิดข้อผิดพลาด: ' + (error.response?.data?.message || 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้'));
-  }
-};
-
-const [users, setUsers] = useState([]);
-
+// 1. ฟังก์ชันดึงข้อมูล (ปรับให้รองรับ error ได้ดีขึ้น)
 const fetchUsers = async () => {
   try {
     const response = await axios.get('https://shop-system-backend.onrender.com/api/users');
-    setUsers(response.data);
+    // ตรวจสอบว่าข้อมูลที่ได้มาเป็น Array หรือไม่ก่อนจะ setUsers
+    if (Array.isArray(response.data)) {
+      setUsers(response.data);
+    }
   } catch (error) {
     console.error('Fetch users error:', error);
   }
 };
 
-// เรียกใช้ตอนเปิดหน้าเว็บครั้งแรก
+// 2. ฟังก์ชันอัปเดตข้อมูล (แก้ไขให้ส่งข้อมูลถูกต้อง)
+const updateUser = async (id, data) => {
+  try {
+    // ใส่ Loading หรือปิดการกดปุ่มชั่วคราวเพื่อป้องกันกดซ้ำ (ถ้าต้องการ)
+    const response = await axios.put(`https://shop-system-backend.onrender.com/api/users/${id}`, data, {
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem('token')}`
+      }
+    });
+
+    if (response.status === 200) {
+      // ✅ ใช้ fetchUsers() เพื่อดึงข้อมูลใหม่ทั้งหมดที่ถูกต้องจากฐานข้อมูล
+      await fetchUsers(); 
+      alert('✅ อัปเดตข้อมูลผู้ใช้สำเร็จ');
+    }
+  } catch (error) {
+    console.error('Error updating user:', error);
+    // ถ้า error เพราะ token หมดอายุ หรือไม่มีสิทธิ์
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      alert('❌ คุณไม่มีสิทธิ์ทำรายการนี้ หรือเซสชันหมดอายุ');
+    } else {
+      alert('❌ เกิดข้อผิดพลาด: ' + (error.response?.data?.message || 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้'));
+    }
+    // ดึงข้อมูลกลับมาใหม่เพื่อคืนค่าเดิมใน UI
+    fetchUsers();
+  }
+};
+
+// 3. เรียกใช้ตอนเปิดหน้าเว็บ
 useEffect(() => {
   if (adminTab === 'users') {
     fetchUsers();

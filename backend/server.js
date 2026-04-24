@@ -319,25 +319,48 @@ app.put('/api/users/:id', upload.single('profile_picture'), async (req, res) => 
   } catch (error) { res.status(500).json({ error: "เกิดข้อผิดพลาดในการเข้ารหัสผ่าน" }); }
 });
 
-// 1. ดึงรายชื่อผู้ใช้ทั้งหมด
+// 1. ดึงรายชื่อผู้ใช้ทั้งหมด (เหมือนเดิมแต่จัดให้ดูง่ายขึ้น)
 app.get('/api/users', (req, res) => {
-  db.query('SELECT id, username, email, role, status FROM users', (err, results) => {
-    if (err) return res.status(500).json(err);
+  const sql = 'SELECT id, username, email, role, status FROM users ORDER BY id DESC';
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error('Error fetching users:', err);
+      return res.status(500).json({ message: 'Internal Server Error' });
+    }
     res.json(results);
   });
 });
 
-// 2. แก้ไขข้อมูล/ระงับบัญชี (Update status หรือ role)
+// 2. แก้ไขข้อมูล/ระงับบัญชี
 app.put('/api/users/:id', (req, res) => {
+  const { id } = req.params;
   const { role, status } = req.body;
-  db.query(
-    'UPDATE users SET role = ?, status = ? WHERE id = ?',
-    [role, status, req.params.id],
-    (err, result) => {
-      if (err) return res.status(500).json(err);
-      res.json({ message: 'อัปเดตสถานะสำเร็จ' });
+
+  // ตรวจสอบเบื้องต้นว่ามีข้อมูลส่งมาไหม
+  if (!role || !status) {
+    return res.status(400).json({ message: 'ข้อมูลไม่ครบถ้วน (ต้องการ role และ status)' });
+  }
+
+  const sqlUpdate = 'UPDATE users SET role = ?, status = ? WHERE id = ?';
+  
+  db.query(sqlUpdate, [role, status, id], (err, result) => {
+    if (err) {
+      console.error('Update error:', err);
+      return res.status(500).json({ message: 'ไม่สามารถอัปเดตข้อมูลได้' });
     }
-  );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'ไม่พบผู้ใช้งานที่ต้องการอัปเดต' });
+    }
+
+    // ✅ แทนที่จะส่งแค่ข้อความ ให้ส่งข้อมูลที่อัปเดตแล้วกลับไป หรือแค่ยืนยันความสำเร็จ
+    // เพื่อให้ Frontend มั่นใจว่าฐานข้อมูลเปลี่ยนแล้วจริงๆ
+    res.json({ 
+      success: true, 
+      message: 'อัปเดตสถานะสำเร็จ',
+      updatedUser: { id, role, status } 
+    });
+  });
 });
 
 const PORT = process.env.PORT || 5000;
