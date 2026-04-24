@@ -72,7 +72,7 @@ SECRET_KEY=your_secret
 * **Frontend: npm run dev**
 
 ## 📝 ข้อมูลผู้พัฒนา
-* **ชื่อ: Big
+* **ชื่อ: Big**
 * **สถาบัน: Rajamangala University of Technology Isan (RMUTI)**
 * **สาขา: Information Systems (IS)**
 
