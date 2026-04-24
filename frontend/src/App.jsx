@@ -6,59 +6,194 @@ import autoTable from 'jspdf-autotable';
 import { fontBase64 } from './ThaiFont';
 import * as XLSX from 'xlsx';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import API_URL from './config'; // หรือใส่ path ให้ตรงกับที่ไฟล์ config.js อยู่
+import API_URL from './config';
 
-// 🟢 [เพิ่มส่วนนี้]: คอมโพเนนต์สำหรับหน้ารายละเอียดสินค้า
+// ============================================================
+// 🎨 ระบบสีกลาง (Design Tokens)
+// เปรียบเหมือน "กล่องสีของร้าน" — แก้ที่นี่ที่เดียว ทั้งแอปเปลี่ยนตาม
+// ============================================================
+const C = {
+  primary:      '#6366f1',   // indigo หลัก
+  primaryDark:  '#4f46e5',
+  primaryLight: '#e0e7ff',
+  success:      '#10b981',   // เขียว
+  successLight: '#d1fae5',
+  danger:       '#ef4444',   // แดง
+  dangerLight:  '#fee2e2',
+  warning:      '#f59e0b',   // เหลือง
+  warningLight: '#fef3c7',
+  info:         '#3b82f6',   // น้ำเงิน
+  infoLight:    '#dbeafe',
+  sidebar:      '#0f172a',   // เข้มกรมท่า
+  sidebarHover: '#1e293b',
+  bg:           '#f8fafc',
+  surface:      '#ffffff',
+  border:       '#e2e8f0',
+  text:         '#1e293b',
+  textSub:      '#64748b',
+  textMuted:    '#94a3b8',
+};
+
+// ============================================================
+// 🍞 ToastContainer — ระบบแจ้งเตือนแบบลอย (ไม่ต้องกด OK)
+// เปรียบเหมือน "ป้ายไฟที่โผล่ขึ้นมาตอนมีข่าวสาร แล้วหายไปเอง"
+// type: 'success' | 'error' | 'warning' | 'info'
+// ============================================================
+function ToastContainer({ toasts, onRemove }) {
+  const icons    = { success:'✅', error:'❌', warning:'⚠️', info:'ℹ️' };
+  const bgColors = { success: C.success, error: C.danger, warning: C.warning, info: C.primary };
+  return (
+    <div style={{
+      position:'fixed', top:'76px', right:'16px',
+      zIndex:99999, display:'flex', flexDirection:'column', gap:'10px',
+      width:'min(320px, calc(100vw - 32px))', pointerEvents:'none',
+    }}>
+      {toasts.map(t => (
+        <div key={t.id} style={{
+          background: bgColors[t.type] || C.primary,
+          color:'#fff', padding:'12px 16px', borderRadius:'12px',
+          boxShadow:'0 8px 24px rgba(0,0,0,0.18)',
+          display:'flex', alignItems:'center', gap:'10px',
+          animation:'toastSlideIn 0.3s ease',
+          pointerEvents:'auto', fontSize:'14px', fontWeight:'600',
+        }}>
+          <span style={{ fontSize:'18px', flexShrink:0 }}>{icons[t.type]}</span>
+          <span style={{ flex:1, lineHeight:1.4 }}>{t.message}</span>
+          <button onClick={() => onRemove(t.id)} style={{
+            background:'rgba(255,255,255,0.2)', border:'none', borderRadius:'50%',
+            width:'22px', height:'22px', cursor:'pointer', color:'#fff',
+            fontSize:'12px', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
+          }}>✕</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ============================================================
+// 🛍️ CartPopup — ป๊อบอัพ "เพิ่มสินค้าลงตะกร้าแล้ว!" กลางจอ
+// เปรียบเหมือน "ป้ายเล็กๆ ที่โผล่กลางจอแล้วหายไปใน 2 วินาที"
+// ============================================================
+function CartPopup({ popup }) {
+  if (!popup) return null;
+  return (
+    <div style={{
+      position:'fixed', top:'50%', left:'50%',
+      transform:'translate(-50%, -50%)',
+      zIndex:88888, pointerEvents:'none',
+      animation:'cartPopIn 0.35s cubic-bezier(0.34,1.56,0.64,1)',
+    }}>
+      <div style={{
+        background:'#fff', borderRadius:'20px', padding:'22px 28px',
+        boxShadow:'0 20px 60px rgba(0,0,0,0.18)',
+        display:'flex', flexDirection:'column', alignItems:'center', gap:'10px',
+        minWidth:'200px', border:`2px solid ${C.success}`,
+      }}>
+        {popup.image && (
+          <img src={popup.image} alt={popup.name}
+            style={{ width:'70px', height:'70px', borderRadius:'12px', objectFit:'cover' }} />
+        )}
+        <span style={{ fontSize:'28px' }}>🛒</span>
+        <span style={{ color:C.success, fontWeight:'800', fontSize:'15px' }}>เพิ่มลงตะกร้าแล้ว!</span>
+        <span style={{ color:C.textSub, fontSize:'13px', textAlign:'center', maxWidth:'160px', lineHeight:1.4 }}>
+          {popup.name}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 🏷️ StatusBadge — ป้ายสีแสดงสถานะออเดอร์
+// เปรียบเหมือน "สติกเกอร์สีบนกล่องพัสดุ" บอกขั้นตอนปัจจุบัน
+// ============================================================
+function StatusBadge({ status }) {
+  const map = {
+    'รอดำเนินการ':  { bg:C.warningLight,  color:C.warning,  icon:'⏳' },
+    'ชำระเงินแล้ว': { bg:C.infoLight,     color:C.info,     icon:'💳' },
+    'กำลังจัดส่ง':  { bg:'#f3e8ff',       color:'#7c3aed',  icon:'📦' },
+    'จัดส่งแล้ว':   { bg:C.successLight,  color:C.success,  icon:'🚚' },
+    'ยกเลิก':       { bg:C.dangerLight,   color:C.danger,   icon:'❌' },
+  };
+  const s = map[status] || { bg:C.border, color:C.textSub, icon:'•' };
+  return (
+    <span style={{
+      display:'inline-flex', alignItems:'center', gap:'4px',
+      padding:'4px 10px', borderRadius:'999px',
+      background:s.bg, color:s.color, fontSize:'11px', fontWeight:'700', whiteSpace:'nowrap',
+    }}>
+      {s.icon} {status}
+    </span>
+  );
+}
+
+// ============================================================
+// 🔍 ProductDetailPage — หน้ารายละเอียดสินค้า
+// โครงสร้างเดิม 100% — ตกแต่ง UI ใหม่ให้ทันสมัย
+// ============================================================
 function ProductDetailPage({ products, addToCart }) {
-  const { id } = useParams(); 
+  const { id } = useParams(); // ดึง ID จาก URL เช่น /product/5 → id = "5"
   const navigate = useNavigate();
-  
   const product = products.find(p => p.id === Number(id));
 
   if (!product) {
-    return <div style={{ padding: '50px', textAlign: 'center' }}><h3>กำลังโหลด... หรือไม่พบสินค้านี้ 😥</h3><button onClick={() => navigate('/')}>กลับหน้าแรก</button></div>;
+    return (
+      <div style={{ padding:'50px', textAlign:'center' }}>
+        <p style={{ fontSize:'48px' }}>😥</p>
+        <h3 style={{ color:C.textSub }}>กำลังโหลด... หรือไม่พบสินค้านี้</h3>
+        <button onClick={() => navigate('/')} style={{
+          marginTop:'20px', background:C.primary, color:'#fff',
+          border:'none', padding:'12px 24px', borderRadius:'10px',
+          cursor:'pointer', fontWeight:'700', fontSize:'15px', fontFamily:'inherit',
+        }}>กลับหน้าแรก</button>
+      </div>
+    );
   }
 
   return (
-    <div style={{ padding: '40px', maxWidth: '1000px', margin: '0 auto' }}>
-      <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: '#3498db', fontSize: '16px', cursor: 'pointer', marginBottom: '20px' }}>
-        ⬅️ ย้อนกลับ
-      </button>
-      
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '40px', background: 'white', padding: '30px', borderRadius: '15px', boxShadow: '0 5px 15px rgba(0,0,0,0.05)' }}>
+    <div style={{ padding:'clamp(20px,4vw,40px)', maxWidth:'1000px', margin:'0 auto' }}>
+      <button onClick={() => navigate(-1)} style={{
+        background:'none', border:`1.5px solid ${C.border}`, color:C.primary,
+        fontSize:'14px', cursor:'pointer', marginBottom:'20px',
+        padding:'8px 16px', borderRadius:'8px', fontWeight:'600', fontFamily:'inherit',
+      }}>← ย้อนกลับ</button>
+
+      <div style={{
+        display:'flex', flexWrap:'wrap', gap:'32px', background:C.surface,
+        padding:'clamp(20px,4vw,30px)', borderRadius:'20px',
+        boxShadow:'0 4px 24px rgba(0,0,0,0.07)', border:`1px solid ${C.border}`,
+      }}>
         {/* 🖼️ ฝั่งซ้าย: รูปภาพ */}
-        <div style={{ flex: '1 1 400px' }}>
-          {/* 🟢 [แก้ไข]: เปลี่ยนจากดึง localhost เป็นดึงจาก URL ใน DB (Cloudinary) ตรงๆ */}
-          <img src={product.image} alt={product.name} style={{ width: '100%', height: 'auto', borderRadius: '10px', objectFit: 'cover' }} />
+        <div style={{ flex:'1 1 300px' }}>
+          {/* ดึงรูปจาก Cloudinary URL ตรงๆ */}
+          <img src={product.image} alt={product.name}
+            style={{ width:'100%', height:'clamp(200px,40vw,360px)', borderRadius:'16px', objectFit:'cover', boxShadow:'0 8px 24px rgba(0,0,0,0.10)' }} />
         </div>
-        
+
         {/* 📝 ฝั่งขวา: รายละเอียด */}
-        <div style={{ flex: '1 1 400px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <span style={{ background: '#ecf0f1', color: '#7f8c8d', padding: '5px 10px', borderRadius: '5px', alignSelf: 'flex-start', fontSize: '14px', fontWeight: 'bold' }}>
-            🏷️ หมวดหมู่: {product.category || 'ไม่ระบุ'}
+        <div style={{ flex:'1 1 300px', display:'flex', flexDirection:'column', gap:'12px' }}>
+          <span style={{ background:C.primaryLight, color:C.primary, padding:'5px 12px', borderRadius:'999px', alignSelf:'flex-start', fontSize:'12px', fontWeight:'700' }}>
+            🏷️ {product.category || 'ไม่ระบุหมวดหมู่'}
           </span>
-          <h1 style={{ fontSize: '32px', margin: '15px 0' }}>{product.name}</h1>
-          <h2 style={{ color: '#e74c3c', fontSize: '36px', margin: '0 0 20px 0' }}>฿{product.price}</h2>
-          
-          <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
-            <p style={{ margin: 0, lineHeight: '1.6', color: '#555' }}>
-              <strong>รายละเอียด:</strong><br />
+          <h1 style={{ fontSize:'clamp(20px,4vw,28px)', margin:0, color:C.text, fontWeight:'800' }}>{product.name}</h1>
+          <p style={{ fontSize:'clamp(22px,4vw,32px)', fontWeight:'900', color:C.danger, margin:0 }}>
+            ฿{Number(product.price).toLocaleString()}
+          </p>
+          <div style={{ background:C.bg, padding:'14px', borderRadius:'12px', border:`1px solid ${C.border}` }}>
+            <p style={{ margin:0, lineHeight:'1.7', color:C.textSub, fontSize:'14px' }}>
+              <strong style={{ color:C.text }}>รายละเอียด:</strong><br />
               {product.description || 'ไม่มีรายละเอียดสินค้า'}
             </p>
           </div>
-
-          <p style={{ color: product.stock > 0 ? '#27ae60' : '#e74c3c', fontWeight: 'bold', fontSize: '18px' }}>
-            📦 สถานะ: {product.stock > 0 ? `มีสินค้าพร้อมส่ง (${product.stock} ชิ้น)` : 'สินค้าหมดชั่วคราว'}
+          <p style={{ color:product.stock > 0 ? C.success : C.danger, fontWeight:'700', fontSize:'15px', margin:0 }}>
+            📦 {product.stock > 0 ? `มีสินค้าพร้อมส่ง (${product.stock} ชิ้น)` : 'สินค้าหมดชั่วคราว'}
           </p>
-
-          <button 
-            onClick={() => addToCart(product)} 
-            disabled={product.stock <= 0} 
-            style={{ 
-              marginTop: 'auto', padding: '15px', fontSize: '18px', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: 'pointer',
-              background: product.stock > 0 ? '#2ecc71' : '#bdc3c7', color: 'white', boxShadow: product.stock > 0 ? '0 4px 10px rgba(46, 204, 113, 0.3)' : 'none'
-            }}
-          >
+          <button onClick={() => addToCart(product)} disabled={product.stock <= 0} style={{
+            marginTop:'auto', padding:'14px', fontSize:'16px', fontWeight:'700',
+            border:'none', borderRadius:'12px', cursor:product.stock > 0 ? 'pointer' : 'not-allowed',
+            background:product.stock > 0 ? `linear-gradient(135deg, ${C.primary}, ${C.primaryDark})` : C.textMuted,
+            color:'white', fontFamily:'inherit',
+          }}>
             {product.stock > 0 ? '🛒 หยิบใส่ตะกร้า' : '❌ สินค้าหมด'}
           </button>
         </div>
@@ -67,110 +202,72 @@ function ProductDetailPage({ products, addToCart }) {
   );
 }
 
-// 🟢 หน้าโปรไฟล์ลูกค้า (แก้ไขให้รองรับรูปภาพจาก Cloud)
+// ============================================================
+// 👤 ProfilePage — หน้าโปรไฟล์ลูกค้า
+// โครงสร้างเดิม 100% — ตกแต่ง UI ใหม่
+// ============================================================
 function ProfilePage({ userId }) {
-  const [profile, setProfile] = useState({ username: '', email: '', address: '', phone: '', profile_picture: '', password: '' });
-  const [file, setFile] = useState(null); 
+  const [profile, setProfile] = useState({ username:'', email:'', address:'', phone:'', profile_picture:'', password:'' });
+  const [file, setFile] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     if (userId) {
-      // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
       axios.get(`${API_URL}/users/${userId}`)
-        .then(res => setProfile({ ...res.data, password: '' })) 
+        .then(res => setProfile({ ...res.data, password:'' }))
         .catch(err => console.error("ดึงข้อมูลไม่สำเร็จ", err));
     }
   }, [userId]);
 
   const handleSaveProfile = (e) => {
     e.preventDefault();
-    
     const formData = new FormData();
     formData.append('username', profile.username || '');
     formData.append('email', profile.email || '');
     formData.append('address', profile.address || '');
     formData.append('phone', profile.phone || '');
     formData.append('password', profile.password || '');
-    
-    if (file) {
-      formData.append('profile_picture', file);
-    }
-
-    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
-    axios.put(`${API_URL}/users/${userId}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-    .then(() => {
-      alert('✅ บันทึกข้อมูลโปรไฟล์เรียบร้อย!');
-      window.location.reload(); 
-    })
-    .catch(() => alert('❌ เกิดข้อผิดพลาดในการบันทึก'));
+    if (file) formData.append('profile_picture', file);
+    axios.put(`${API_URL}/users/${userId}`, formData, { headers:{ 'Content-Type':'multipart/form-data' } })
+      .then(() => { alert('✅ บันทึกข้อมูลโปรไฟล์เรียบร้อย!'); window.location.reload(); })
+      .catch(() => alert('❌ เกิดข้อผิดพลาดในการบันทึก'));
   };
 
-  return (
-    <div style={{ padding: '40px', maxWidth: '600px', margin: '0 auto' }}>
-      <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: '#3498db', fontSize: '16px', cursor: 'pointer', marginBottom: '20px' }}>
-        ⬅️ ย้อนกลับ
-      </button>
+  const inp = { width:'100%', padding:'11px 14px', marginTop:'5px', borderRadius:'10px', border:`1.5px solid ${C.border}`, fontSize:'14px', outline:'none', fontFamily:'inherit', color:C.text, boxSizing:'border-box' };
 
-      <div style={{ background: 'white', padding: '30px', borderRadius: '15px', boxShadow: '0 5px 15px rgba(0,0,0,0.05)' }}>
-        <h2 style={{ textAlign: 'center', margin: '0 0 20px 0', color: '#2c3e50' }}>👤 โปรไฟล์ของฉัน</h2>
-        
-        <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          
-          <div style={{ textAlign: 'center', marginBottom: '10px' }}>
-            <div style={{ width: '120px', height: '120px', margin: '0 auto', borderRadius: '50%', overflow: 'hidden', background: '#eee', border: '3px solid #3498db', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-              {file ? (
-                <img src={URL.createObjectURL(file)} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : profile.profile_picture ? (
-                // 🟢 [แก้ไข]: ดึงจาก URL ในฐานข้อมูลตรงๆ (Cloudinary URL)
-                <img src={profile.profile_picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <span style={{ fontSize: '50px' }}>👤</span>
-              )}
+  return (
+    <div style={{ padding:'clamp(20px,4vw,40px)', maxWidth:'600px', margin:'0 auto' }}>
+      <button onClick={() => navigate(-1)} style={{ background:'none', border:`1.5px solid ${C.border}`, color:C.primary, fontSize:'14px', cursor:'pointer', marginBottom:'20px', padding:'8px 16px', borderRadius:'8px', fontWeight:'600', fontFamily:'inherit' }}>← ย้อนกลับ</button>
+      <div style={{ background:C.surface, padding:'clamp(20px,4vw,30px)', borderRadius:'20px', boxShadow:'0 4px 24px rgba(0,0,0,0.07)', border:`1px solid ${C.border}` }}>
+        <h2 style={{ textAlign:'center', margin:'0 0 24px', color:C.text, fontSize:'22px', fontWeight:'800' }}>👤 โปรไฟล์ของฉัน</h2>
+        <form onSubmit={handleSaveProfile} style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
+          <div style={{ textAlign:'center', marginBottom:'8px' }}>
+            <div style={{ width:'110px', height:'110px', margin:'0 auto', borderRadius:'50%', overflow:'hidden', background:C.bg, border:`3px solid ${C.primary}`, display:'flex', justifyContent:'center', alignItems:'center' }}>
+              {file ? <img src={URL.createObjectURL(file)} alt="Preview" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                    : profile.profile_picture ? <img src={profile.profile_picture} alt="Profile" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                    : <span style={{ fontSize:'48px' }}>👤</span>}
             </div>
-            <label style={{ display: 'inline-block', marginTop: '10px', background: '#3498db', color: 'white', padding: '8px 15px', borderRadius: '20px', cursor: 'pointer', fontSize: '14px' }}>
+            <label style={{ display:'inline-block', marginTop:'10px', background:C.primary, color:'white', padding:'8px 16px', borderRadius:'20px', cursor:'pointer', fontSize:'13px', fontWeight:'600' }}>
               📸 เปลี่ยนรูป
-              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => setFile(e.target.files[0])} />
+              <input type="file" accept="image/*" style={{ display:'none' }} onChange={(e) => setFile(e.target.files[0])} />
             </label>
           </div>
-
-          <div>
-            <label style={{ fontWeight: 'bold' }}>👤 ชื่อผู้ใช้งาน:</label>
-            <input type="text" required value={profile.username || ''} onChange={(e) => setProfile({...profile, username: e.target.value})} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '5px', border: '1px solid #3498db' }} />
-          </div>
-
-          <div>
-            <label style={{ fontWeight: 'bold' }}>📧 อีเมล:</label>
-            <input type="email" required value={profile.email || ''} onChange={(e) => setProfile({...profile, email: e.target.value})} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '5px', border: '1px solid #3498db' }} />
-          </div>
-
-          <div>
-            <label style={{ fontWeight: 'bold', color: '#e74c3c' }}>🔐 รหัสผ่านใหม่ (เว้นว่างไว้ถ้าไม่เปลี่ยน):</label>
-            <input type="password" value={profile.password || ''} onChange={(e) => setProfile({...profile, password: e.target.value})} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '5px', border: '1px solid #e74c3c' }} />
-          </div>
-
-          <hr style={{ border: '0.5px solid #eee', margin: '10px 0' }} />
-
-          <div>
-            <label style={{ fontWeight: 'bold' }}>🏠 ที่อยู่จัดส่ง:</label>
-            <textarea rows="3" value={profile.address || ''} onChange={(e) => setProfile({...profile, address: e.target.value})} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '5px', border: '1px solid #3498db' }} />
-          </div>
-
-          <div>
-            <label style={{ fontWeight: 'bold' }}>📞 เบอร์โทรศัพท์:</label>
-            <input type="text" value={profile.phone || ''} onChange={(e) => setProfile({...profile, phone: e.target.value})} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '5px', border: '1px solid #3498db' }} />
-          </div>
-
-          <button type="submit" style={{ background: '#2ecc71', color: 'white', border: 'none', padding: '12px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px', marginTop: '10px' }}>
-            💾 บันทึกข้อมูล
-          </button>
+          <div><label style={{ fontWeight:'700', color:C.textSub, fontSize:'13px' }}>👤 ชื่อผู้ใช้งาน</label><input type="text" required value={profile.username||''} onChange={(e) => setProfile({...profile,username:e.target.value})} style={inp} /></div>
+          <div><label style={{ fontWeight:'700', color:C.textSub, fontSize:'13px' }}>📧 อีเมล</label><input type="email" required value={profile.email||''} onChange={(e) => setProfile({...profile,email:e.target.value})} style={inp} /></div>
+          <div><label style={{ fontWeight:'700', color:C.danger, fontSize:'13px' }}>🔐 รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)</label><input type="password" value={profile.password||''} onChange={(e) => setProfile({...profile,password:e.target.value})} style={{ ...inp, borderColor:C.danger }} /></div>
+          <hr style={{ border:'none', borderTop:`1px solid ${C.border}`, margin:'4px 0' }} />
+          <div><label style={{ fontWeight:'700', color:C.textSub, fontSize:'13px' }}>🏠 ที่อยู่จัดส่ง</label><textarea rows="3" value={profile.address||''} onChange={(e) => setProfile({...profile,address:e.target.value})} style={{ ...inp, resize:'vertical', lineHeight:'1.5' }} /></div>
+          <div><label style={{ fontWeight:'700', color:C.textSub, fontSize:'13px' }}>📞 เบอร์โทรศัพท์</label><input type="text" value={profile.phone||''} onChange={(e) => setProfile({...profile,phone:e.target.value})} style={inp} /></div>
+          <button type="submit" style={{ background:`linear-gradient(135deg, ${C.success}, #059669)`, color:'white', border:'none', padding:'13px', borderRadius:'12px', cursor:'pointer', fontWeight:'700', fontSize:'15px', marginTop:'4px', fontFamily:'inherit' }}>💾 บันทึกข้อมูล</button>
         </form>
       </div>
     </div>
   );
 }
 
+// ============================================================
+// 🚀 App — Entry Point ของแอป
+// ============================================================
 function App() {
   return (
     <Router>
@@ -179,60 +276,88 @@ function App() {
   );
 }
 
+// ============================================================
+// 🏪 AppContent — ตัวหลักของแอปทั้งหมด
+// เปรียบเหมือน "ผู้จัดการร้าน" ที่รู้ทุก State และบริหาร
+// ทุกแผนก (Component/Route) ของแอป
+// ============================================================
 function AppContent() {
   const navigate = useNavigate();
-  const [orders, setOrders] = useState([]); 
-  const [products, setProducts] = useState([]); 
-  const [cart, setCart] = useState([]);         
-  const [editingProduct, setEditingProduct] = useState(null); 
-  const [file, setFile] = useState(null); 
-  const [isLoggedIn, setIsLoggedIn] = useState(localStorage.getItem('token') ? true : false);
-  const [userRole, setUserRole] = useState(localStorage.getItem('role') || 'user');
-  const [userId, setUserId] = useState(localStorage.getItem('userId') || null);
-  const [myOrders, setMyOrders] = useState([]);
-  const [showPayModal, setShowPayModal] = useState(false);
-  const [currentOrderId, setCurrentOrderId] = useState(null);
-  const [address, setAddress] = useState('');
-  const [phone, setPhone] = useState('');
-  const [slipFile, setSlipFile] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('ทั้งหมด');
-  const [adminTab, setAdminTab] = useState('report'); 
 
+  // ============================================================
+  // 📦 STATE ทั้งหมด — "สมุดบัญชีร้าน" เก็บข้อมูลทุกอย่าง
+  // ============================================================
+  const [orders, setOrders]                   = useState([]);
+  const [products, setProducts]               = useState([]);
+  const [cart, setCart]                       = useState([]);
+  const [editingProduct, setEditingProduct]   = useState(null);
+  const [file, setFile]                       = useState(null);
+  const [isLoggedIn, setIsLoggedIn]           = useState(localStorage.getItem('token') ? true : false);
+  const [userRole, setUserRole]               = useState(localStorage.getItem('role') || 'user');
+  const [userId, setUserId]                   = useState(localStorage.getItem('userId') || null);
+  const [myOrders, setMyOrders]               = useState([]);
+  const [showPayModal, setShowPayModal]       = useState(false);
+  const [currentOrderId, setCurrentOrderId]   = useState(null);
+  const [address, setAddress]                 = useState('');
+  const [phone, setPhone]                     = useState('');
+  const [slipFile, setSlipFile]               = useState(null);
+  const [searchTerm, setSearchTerm]           = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('ทั้งหมด');
+  const [adminTab, setAdminTab]               = useState('report');
+  const [users, setUsers]                     = useState([]);
+  const [isSidebarOpen, setIsSidebarOpen]     = useState(window.innerWidth > 768);
+
+  // ============================================================
+  // 🍞 Toast State — กล่องเก็บป๊อบอัพแจ้งเตือน
+  // ============================================================
+  const [toasts, setToasts] = useState([]);
+
+  // ฟังก์ชันสร้าง Toast — แล้วลบออกอัตโนมัติหลัง 3.5 วินาที
+  const toast = (message, type = 'success') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3500);
+  };
+
+  // ============================================================
+  // 🛍️ CartPopup State — ป๊อบอัพตอนเพิ่มสินค้าลงตะกร้า
+  // ============================================================
+  const [cartPopup, setCartPopup] = useState(null); // null = ไม่โชว์
+
+  // ============================================================
+  // 🛰️ ดึงข้อมูลจาก Backend ตอนแอปเริ่มทำงาน
+  // useEffect = "พนักงานที่ทำงานทันทีตอนร้านเปิด"
+  // ============================================================
   useEffect(() => {
-    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
     axios.get(`${API_URL}/products`).then(res => setProducts(res.data));
     if (isLoggedIn) fetchMyOrders();
-    fetchOrders(); 
-
-    const orderInterval = setInterval(() => {
-      fetchOrders(); 
-    }, 5000);
+    fetchOrders();
+    // ดึงออเดอร์ใหม่ทุก 5 วินาที — เปรียบเหมือน "เดินรอบเช็คออเดอร์"
+    const orderInterval = setInterval(() => { fetchOrders(); }, 5000);
+    // cleanup: ล้าง interval เมื่อ component ถูกลบ ป้องกัน memory leak
     return () => clearInterval(orderInterval);
   }, [isLoggedIn, userId]);
 
+  // ดึง orders ทั้งหมด (Admin ใช้)
   const fetchOrders = () => {
-    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
     axios.get(`${API_URL}/orders`)
-      .then(res => {
-        setOrders(res.data); 
-      })
+      .then(res => setOrders(res.data))
       .catch(err => console.log("ดึงข้อมูลออเดอร์พลาด:", err));
   };
 
+  // ดึงเฉพาะออเดอร์ของ user คนนี้
   const fetchMyOrders = () => {
     if (!userId) return;
-    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
     axios.get(`${API_URL}/my-orders/${userId}`)
       .then(res => setMyOrders(res.data))
       .catch(err => console.log("ดึงประวัติสั่งซื้อพลาด:", err));
   };
 
+  // ============================================================
+  // 📊 Export Excel — โครงสร้างเดิม ไม่แตะ
+  // ============================================================
   const exportToExcel = () => {
-    if (orders.length === 0) {
-      alert("ไม่มีข้อมูลออเดอร์สำหรับ Export ครับ");
-      return;
-    }
+    if (orders.length === 0) { alert("ไม่มีข้อมูลออเดอร์สำหรับ Export ครับ"); return; }
     const dataToExport = orders.map(order => ({
       "หมายเลขออเดอร์": `#${order.id}`,
       "จำนวนชิ้นที่สั่ง": order.items_count,
@@ -247,254 +372,240 @@ function AppContent() {
     XLSX.writeFile(workbook, "BIG_SHOP_Sales_Report.xlsx");
   };
 
+  // ============================================================
+  // 📄 Export PDF — โครงสร้างเดิม ไม่แตะ
+  // ============================================================
   const exportToPDF = () => {
-    if (orders.length === 0) {
-      alert("ไม่มีข้อมูลออเดอร์สำหรับ Export ครับ");
-      return;
-    }
+    if (orders.length === 0) { alert("ไม่มีข้อมูลออเดอร์สำหรับ Export ครับ"); return; }
     const doc = new jsPDF();
     doc.addFileToVFS("THSarabunNew.ttf", fontBase64);
     doc.addFont("THSarabunNew.ttf", "ThaiFont", "normal");
     doc.setFont("ThaiFont");
     doc.setFontSize(20);
-    doc.text("รายงานสรุปยอดขายทั้งหมด - BIG SHOP", 105, 20, { align: "center" });
-    const tableColumn = ["หมายเลขออเดอร์", "จำนวนชิ้น", "ยอดรวม (บาท)", "วันที่สั่งซื้อ", "สถานะ"];
+    doc.text("รายงานสรุปยอดขายทั้งหมด - BIG SHOP", 105, 20, { align:"center" });
+    const tableColumn = ["หมายเลขออเดอร์","จำนวนชิ้น","ยอดรวม (บาท)","วันที่สั่งซื้อ","สถานะ"];
     const tableRows = [];
-    orders.forEach(order => {
-      const orderData = [`#${order.id}`, order.items_count, order.total_price, new Date(order.created_at).toLocaleString('th-TH'), order.status];
-      tableRows.push(orderData);
-    });
-    autoTable(doc, {
-      startY: 30,
-      head: [tableColumn],
-      body: tableRows,
-      styles: { font: 'ThaiFont', fontSize: 14 },
-      headStyles: { fillColor: [44, 62, 80], font: 'ThaiFont', fontStyle: 'normal' } 
-    });
+    orders.forEach(order => { tableRows.push([`#${order.id}`, order.items_count, order.total_price, new Date(order.created_at).toLocaleString('th-TH'), order.status]); });
+    autoTable(doc, { startY:30, head:[tableColumn], body:tableRows, styles:{ font:'ThaiFont', fontSize:14 }, headStyles:{ fillColor:[44,62,80], font:'ThaiFont', fontStyle:'normal' } });
     doc.save("BIG_SHOP_Sales_Report.pdf");
   };
-  
+
+  // ============================================================
+  // 🗑️ ลบประวัติออเดอร์ — โครงสร้างเดิม
+  // ============================================================
   const deleteOrderHistory = (orderId) => {
     if (window.confirm("คุณต้องการลบประวัติการสั่งซื้อนี้ทิ้งใช่หรือไม่?")) {
-      // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
       axios.delete(`${API_URL}/orders/${orderId}`)
-        .then(() => {
-          alert("🗑️ ลบประวัติการสั่งซื้อเรียบร้อยแล้ว");
-          fetchMyOrders(); 
-          fetchOrders();
-        })
-        .catch(err => alert("❌ ไม่สามารถลบได้"));
+        .then(() => { toast("🗑️ ลบประวัติเรียบร้อย", 'info'); fetchMyOrders(); fetchOrders(); })
+        .catch(() => toast("❌ ไม่สามารถลบได้", 'error'));
     }
   };
 
+  // ยกเลิกออเดอร์ — โครงสร้างเดิม
   const cancelOrder = (orderId) => {
     if (window.confirm("คุณต้องการยกเลิกออเดอร์นี้ใช่หรือไม่?")) {
-      // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
       axios.delete(`${API_URL}/orders/${orderId}`)
-        .then(() => {
-          alert("ยกเลิกออเดอร์เรียบร้อยแล้ว");
-          fetchMyOrders();
-        })
-        .catch(err => alert("ไม่สามารถยกเลิกได้"));
+        .then(() => { toast("ยกเลิกออเดอร์เรียบร้อย", 'info'); fetchMyOrders(); })
+        .catch(() => toast("ไม่สามารถยกเลิกได้", 'error'));
     }
   };
 
+  // ============================================================
+  // 🖨️ สร้างใบเสร็จ PDF — โครงสร้างเดิม ไม่แตะ
+  // ============================================================
   const generatePDF = async (order) => {
     try {
-      // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
       const res = await axios.get(`${API_URL}/orders/${order.id}/items`);
       const items = res.data;
       const doc = new jsPDF();
       doc.addFileToVFS("THSarabunNew.ttf", fontBase64);
       doc.addFont("THSarabunNew.ttf", "ThaiFont", "normal");
       doc.setFont("ThaiFont", "normal");
-      doc.setFontSize(26);
-      doc.text("BIG SHOP", 105, 20, { align: "center" });
-      doc.setFontSize(16);
-      doc.text("ใบเสร็จรับเงิน / Receipt", 105, 28, { align: "center" });
-      doc.setLineWidth(0.5);
-      doc.line(15, 32, 195, 32);
+      doc.setFontSize(26); doc.text("BIG SHOP", 105, 20, { align:"center" });
+      doc.setFontSize(16); doc.text("ใบเสร็จรับเงิน / Receipt", 105, 28, { align:"center" });
+      doc.setLineWidth(0.5); doc.line(15, 32, 195, 32);
       doc.setFontSize(14);
       doc.text(`หมายเลขคำสั่งซื้อ: #${order.id}`, 15, 42);
       const orderDate = order.created_at ? new Date(order.created_at).toLocaleDateString('th-TH') : new Date().toLocaleDateString('th-TH');
       doc.text(`วันที่สั่งซื้อ: ${orderDate}`, 15, 49);
       doc.text(`สถานะ: ${order.status}`, 15, 56);
-      const tableRows = items.map((item, index) => [index + 1, item.name, item.quantity, `฿${Number(item.price).toLocaleString()}`, `฿${(Number(item.price) * item.quantity).toLocaleString()}`]);
+      const tableRows = items.map((item, index) => [index+1, item.name, item.quantity, `฿${Number(item.price).toLocaleString()}`, `฿${(Number(item.price)*item.quantity).toLocaleString()}`]);
       autoTable(doc, {
-        startY: 62,
-        head: [['ลำดับ', 'รายการสินค้า', 'จำนวน', 'ราคา/ชิ้น', 'รวมสุทธิ']],
-        body: tableRows,
-        foot: [['', '', '', 'ยอดรวมทั้งสิ้น', `฿${Number(order.total_price).toLocaleString()}`]],
-        styles: { font: 'ThaiFont', fontStyle: 'normal', fontSize: 14 },
-        headStyles: { fillColor: [44, 62, 80], textColor: 255, halign: 'center' },
-        footStyles: { fillColor: [236, 240, 241], textColor: 20 },
-        columnStyles: { 0: { halign: 'center', cellWidth: 20 }, 2: { halign: 'center', cellWidth: 25 }, 3: { halign: 'right', cellWidth: 35 }, 4: { halign: 'right', cellWidth: 35 } }
+        startY:62,
+        head:[['ลำดับ','รายการสินค้า','จำนวน','ราคา/ชิ้น','รวมสุทธิ']],
+        body:tableRows,
+        foot:[['','','','ยอดรวมทั้งสิ้น',`฿${Number(order.total_price).toLocaleString()}`]],
+        styles:{ font:'ThaiFont', fontStyle:'normal', fontSize:14 },
+        headStyles:{ fillColor:[44,62,80], textColor:255, halign:'center' },
+        footStyles:{ fillColor:[236,240,241], textColor:20 },
+        columnStyles:{ 0:{halign:'center',cellWidth:20}, 2:{halign:'center',cellWidth:25}, 3:{halign:'right',cellWidth:35}, 4:{halign:'right',cellWidth:35} }
       });
-      const finalY = doc.lastAutoTable.finalY || 100; 
-      doc.setFontSize(14);
-      doc.setTextColor(100);
-      doc.text("ขอบคุณที่ใช้บริการ BIG SHOP", 105, finalY + 15, { align: "center" });
+      const finalY = doc.lastAutoTable.finalY || 100;
+      doc.setFontSize(14); doc.setTextColor(100);
+      doc.text("ขอบคุณที่ใช้บริการ BIG SHOP", 105, finalY+15, { align:"center" });
       window.open(doc.output('bloburl'), '_blank');
-    } catch (err) { alert("❌ เกิดข้อผิดพลาดในการดึงข้อมูลใบเสร็จ"); }
+    } catch (err) { toast("❌ เกิดข้อผิดพลาดในการดึงข้อมูลใบเสร็จ", 'error'); }
   };
 
+  // ============================================================
+  // 🔄 อัปเดตสถานะออเดอร์ (Admin) — โครงสร้างเดิม
+  // ============================================================
   const updateOrderStatus = (orderId, newStatus) => {
-    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
-    axios.put(`${API_URL}/orders/${orderId}`, { status: newStatus })
+    axios.put(`${API_URL}/orders/${orderId}`, { status:newStatus })
       .then(() => {
-        alert("อัปเดตสถานะเป็น: " + newStatus);
-        fetchOrders(); 
-        // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
-        axios.get(`${API_URL}/products`).then(res => setProducts(res.data)); 
+        toast("อัปเดตสถานะ: " + newStatus, 'success');
+        fetchOrders();
+        axios.get(`${API_URL}/products`).then(res => setProducts(res.data));
       })
-      .catch(err => alert("อัปเดตพลาด: " + err));
+      .catch(err => toast("อัปเดตพลาด: " + err, 'error'));
   };
 
+  // ============================================================
+  // 🔐 Login — แก้ไข: ใช้ Toast แทน alert
+  // ✅ แสดงป๊อบอัพ "เข้าสู่ระบบสำเร็จ/ไม่สำเร็จ" ตามที่ขอ
+  // ============================================================
   const handleLogin = (e) => {
     e.preventDefault();
     const username = e.target.username.value;
     const password = e.target.password.value;
-    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
     axios.post(`${API_URL}/login`, { username, password })
-    .then(res => {
-      localStorage.setItem('token', res.data.token);
-      localStorage.setItem('role', res.data.role);
-      localStorage.setItem('userId', res.data.id);
-      setIsLoggedIn(true);
-      setUserRole(res.data.role);
-      setUserId(res.data.id);
-      alert(`ยินดีต้อนรับครับคุณ ${username}!`);
-      if (res.data.role === 'admin') navigate('/admin'); else navigate('/');
-    })
-    .catch(err => alert("ชื่อหรือรหัสผ่านผิดครับ!"));
+      .then(res => {
+        localStorage.setItem('token', res.data.token);
+        localStorage.setItem('role', res.data.role);
+        localStorage.setItem('userId', res.data.id);
+        setIsLoggedIn(true);
+        setUserRole(res.data.role);
+        setUserId(res.data.id);
+        // ✅ Toast แจ้งสำเร็จ (แทน alert เดิม)
+        toast(`🎉 ยินดีต้อนรับคุณ ${username}!`, 'success');
+        // เปิด Sidebar อัตโนมัติบนจอใหญ่
+        if (window.innerWidth > 768) setIsSidebarOpen(true);
+        if (res.data.role === 'admin') navigate('/admin');
+        else navigate('/');
+      })
+      .catch(() => {
+        // ✅ Toast แจ้งไม่สำเร็จ
+        toast('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง', 'error');
+      });
   };
 
+  // ============================================================
+  // 📝 Register — โครงสร้างเดิม
+  // ============================================================
   const handleRegister = (e) => {
     e.preventDefault();
     const username = e.target.username.value;
     const password = e.target.password.value;
     const confirmPassword = e.target.confirmPassword.value;
-    if (password !== confirmPassword) return alert("รหัสผ่านไม่ตรงกันครับ!");
-    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+    if (password !== confirmPassword) return toast("รหัสผ่านไม่ตรงกันครับ!", 'error');
     axios.post(`${API_URL}/register`, { username, password })
-      .then(res => { alert(res.data.message); navigate('/login'); })
-      .catch(err => alert(err.response.data.message || "เกิดข้อผิดพลาด"));
+      .then(res => { toast(res.data.message, 'success'); navigate('/login'); })
+      .catch(err => toast(err.response?.data?.message || "เกิดข้อผิดพลาด", 'error'));
   };
 
+  // ============================================================
+  // 🛒 flatCart — แตกจำนวนสินค้าออกเป็นชิ้นๆ (โครงสร้างเดิม)
+  // เปรียบเหมือน "แพ็ค 2 ชิ้น = 2 กล่องแยกกัน"
+  // ============================================================
   const flatCart = [];
   cart.forEach(item => { for (let i = 0; i < item.qty; i++) flatCart.push(item); });
 
+  // ============================================================
+  // 🛒 เพิ่มสินค้าลงตะกร้า — แก้ไข: เพิ่ม CartPopup แทน alert
+  // ✅ โชว์ป๊อบอัพ "เพิ่มสินค้าแล้ว!" กลางจอ
+  // ============================================================
   const addToCart = (product) => {
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.id === product.id);
       if (existingItem) {
-        if (existingItem.qty >= product.stock) { alert(`⚠️ สินค้านี้มีสต็อกจำกัดเพียง ${product.stock} ชิ้นครับ`); return prevCart; }
-        return prevCart.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item);
+        if (existingItem.qty >= product.stock) {
+          toast(`⚠️ สต็อกจำกัดเพียง ${product.stock} ชิ้น`, 'warning');
+          return prevCart;
+        }
+        return prevCart.map(item => item.id === product.id ? { ...item, qty:item.qty+1 } : item);
       } else {
-        return [...prevCart, { ...product, qty: 1 }];
+        return [...prevCart, { ...product, qty:1 }];
       }
     });
-    alert(`🛒 เพิ่ม "${product.name}" ลงตะกร้าแล้ว!`);
+    // ✅ โชว์ CartPopup กลางจอ หายไปเองใน 2 วินาที
+    setCartPopup({ name:product.name, image:product.image });
+    setTimeout(() => setCartPopup(null), 2000);
   };
-  
+
+  // เพิ่ม/ลดจำนวน — โครงสร้างเดิม
   const updateQuantity = (id, delta) => {
     setCart(prevCart => prevCart.map(item => {
       if (item.id === id) {
         const newQty = item.qty + delta;
-        if (newQty < 1) return item; 
-        if (newQty > item.stock) { alert(`⚠️ สินค้านี้มีสต็อกจำกัดเพียง ${item.stock} ชิ้นครับ`); return item; }
-        return { ...item, qty: newQty };
+        if (newQty < 1) return item;
+        if (newQty > item.stock) { toast(`⚠️ สต็อกจำกัดเพียง ${item.stock} ชิ้น`, 'warning'); return item; }
+        return { ...item, qty:newQty };
       }
       return item;
     }));
   };
 
-  const clearCart = () => { if (window.confirm("คุณต้องการยกเลิกตะกร้าสินค้าทั้งหมดใช่หรือไม่?")) setCart([]); };
+  const clearCart = () => { if (window.confirm("คุณต้องการยกเลิกตะกร้าสินค้าทั้งหมดใช่หรือไม่?")) { setCart([]); toast('ล้างตะกร้าเรียบร้อย', 'info'); } };
   const removeFromCart = (id) => setCart(cart.filter(item => item.id !== id));
 
+  // สั่งซื้อ — โครงสร้างเดิม
   const checkout = () => {
-    if (cart.length === 0) return alert("ตะกร้าว่างเปล่า!");
-    const orderData = { total_price: calculateTotal(), items_count: flatCart.length, user_id: userId, cartItems: flatCart };
-    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
+    if (cart.length === 0) return toast("ตะกร้าว่างเปล่า!", 'warning');
+    const orderData = { total_price:calculateTotal(), items_count:flatCart.length, user_id:userId, cartItems:flatCart };
     axios.post(`${API_URL}/orders`, orderData)
-      .then(res => {
-        setCurrentOrderId(res.data.orderId);
-        setShowPayModal(true);
-        fetchMyOrders();
-      })
-      .catch(() => alert("สั่งซื้อไม่สำเร็จ"));
+      .then(res => { setCurrentOrderId(res.data.orderId); setShowPayModal(true); fetchMyOrders(); })
+      .catch(() => toast("สั่งซื้อไม่สำเร็จ", 'error'));
   };
 
+  // ส่งหลักฐานชำระเงิน — โครงสร้างเดิม
   const handlePayment = (e) => {
     e.preventDefault();
     const formData = new FormData();
     formData.append('address', address);
     formData.append('phone', phone);
     formData.append('slip', slipFile);
-    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
     axios.put(`${API_URL}/orders/pay/${currentOrderId}`, formData)
       .then(() => {
-        alert("ส่งหลักฐานเรียบร้อย! รอแอดมินตรวจสอบนะครับ");
-        setCart([]);
-        localStorage.removeItem('cart');
-        setShowPayModal(false);
-        fetchMyOrders();
+        toast("ส่งหลักฐานเรียบร้อย! รอแอดมินตรวจสอบ", 'success');
+        setCart([]); localStorage.removeItem('cart');
+        setShowPayModal(false); fetchMyOrders();
         navigate('/my-orders');
       })
-      .catch(err => alert("เกิดข้อผิดพลาดในการส่งหลักฐาน"));
+      .catch(() => toast("เกิดข้อผิดพลาดในการส่งหลักฐาน", 'error'));
   };
 
   const calculateTotal = () => cart.reduce((sum, item) => sum + (Number(item.price) * item.qty), 0);
 
+  // ลบสินค้า (Admin) — โครงสร้างเดิม
   const deleteProduct = (id) => {
     if (window.confirm("คุณแน่ใจนะว่าจะลบ?")) {
-      // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
       axios.delete(`${API_URL}/products/${id}`)
-        .then(() => {
-          alert("ลบเรียบร้อย!");
-          // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
-          axios.get(`${API_URL}/products`).then(res => setProducts(res.data));
-        });
+        .then(() => { toast("ลบเรียบร้อย!", 'info'); axios.get(`${API_URL}/products`).then(res => setProducts(res.data)); });
     }
   };
 
   const selectToEdit = (product) => { setEditingProduct(product); };
 
-  const [users, setUsers] = useState([]);
+  // ============================================================
+  // 👥 จัดการผู้ใช้ (Admin) — โครงสร้างเดิม ไม่แตะ
+  // ============================================================
+  const fetchUsers = async () => {
+    try {
+      const response = await axios.get('https://shop-system-backend.onrender.com/api/users');
+      if (Array.isArray(response.data)) setUsers(response.data);
+    } catch (error) { console.error('Fetch users error:', error); }
+  };
 
-// 1. ฟังก์ชันดึงข้อมูล (ปรับให้รองรับ error ได้ดีขึ้น)
-const fetchUsers = async () => {
-  try {
-    const response = await axios.get('https://shop-system-backend.onrender.com/api/users');
-    // ตรวจสอบว่าข้อมูลที่ได้มาเป็น Array หรือไม่ก่อนจะ setUsers
-    if (Array.isArray(response.data)) {
-      setUsers(response.data);
-    }
-  } catch (error) {
-    console.error('Fetch users error:', error);
-  }
-};
+  const updateUser = async (id, data) => {
+    try {
+      const response = await axios.put(`https://shop-system-backend.onrender.com/api/special-admin-update/${id}`, data, {
+        headers: { Authorization:`Bearer ${localStorage.getItem('token')}` }
+      });
+      if (response.status === 200) { await fetchUsers(); toast("✅ อัปเดตสำเร็จ!", 'success'); }
+    } catch (error) { toast("❌ ยิงไม่ติด: " + error.message, 'error'); }
+  };
 
-// 2. ฟังก์ชันอัปเดตข้อมูล (ฉบับเสถียรที่สุด กันชื่อหาย 100%)
-// ในหน้า Admin.jsx (หรือไฟล์ที่คุณทำหน้าจัดการผู้ใช้)
-const updateUser = async (id, data) => {
-  try {
-    // 🟢 เปลี่ยนมายิงที่เส้นทางพิเศษที่เราเพิ่งสร้าง
-    const response = await axios.put(`https://shop-system-backend.onrender.com/api/special-admin-update/${id}`, data, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-    });
-
-    if (response.status === 200) {
-      // ไม่ต้องทำ Optimistic Update ใดๆ ทั้งสิ้น สั่งโหลดใหม่จาก DB เลย
-      await fetchUsers(); 
-      alert("✅ อัปเดตสำเร็จ! คราวนี้ชื่อห้ามหาย");
-    }
-  } catch (error) {
-    console.error("Update Error:", error);
-    alert("❌ ยิงไม่ติด: " + error.message);
-  }
-};
-
+  // เพิ่ม/แก้ไขสินค้า (Admin) — โครงสร้างเดิม
   const addOrUpdateProduct = (e) => {
     e.preventDefault();
     const formData = new FormData();
@@ -502,401 +613,863 @@ const updateUser = async (id, data) => {
     formData.append('price', e.target.price.value);
     formData.append('stock', e.target.stock.value);
     formData.append('description', e.target.desc.value);
-    formData.append('category', e.target.category.value)
-    if (file) formData.append('image', file); 
-
+    formData.append('category', e.target.category.value);
+    if (file) formData.append('image', file);
     if (editingProduct) {
-      // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
       axios.put(`${API_URL}/products/${editingProduct.id}`, formData)
-        .then(() => {
-          alert("แก้ไขเรียบร้อย!");
-          setEditingProduct(null); setFile(null); e.target.reset(); 
-          // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
-          axios.get(`${API_URL}/products`).then(res => setProducts(res.data));
-        });
+        .then(() => { toast("แก้ไขเรียบร้อย!", 'success'); setEditingProduct(null); setFile(null); e.target.reset(); axios.get(`${API_URL}/products`).then(res => setProducts(res.data)); });
     } else {
-      // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
       axios.post(`${API_URL}/products`, formData)
-        .then(() => {
-          alert("เพิ่มสินค้าแล้ว!");
-          setFile(null); e.target.reset();
-          // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
-          axios.get(`${API_URL}/products`).then(res => setProducts(res.data));
-        });
+        .then(() => { toast("เพิ่มสินค้าแล้ว!", 'success'); setFile(null); e.target.reset(); axios.get(`${API_URL}/products`).then(res => setProducts(res.data)); });
     }
   };
 
-  const totalSales = orders.filter(o => o.status === 'ชำระเงินแล้ว' || o.status === 'จัดส่งแล้ว').reduce((sum, o) => sum + Number(o.total_price), 0);
-  const pendingOrders = orders.filter(o => o.status === 'รอดำเนินการ').length;
-  const completedOrders = orders.filter(o => o.status === 'จัดส่งแล้ว').length;
-  const totalUsers = [...new Set(orders.map(o => o.user_id))].length;
-  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 768);
+  // ============================================================
+  // 📊 คำนวณสถิติ Admin (โครงสร้างเดิม)
+  // reduce = "นักบัญชีวนรวมยอด"
+  // ============================================================
+  const totalSales      = orders.filter(o => o.status==='ชำระเงินแล้ว'||o.status==='จัดส่งแล้ว').reduce((sum,o) => sum+Number(o.total_price), 0);
+  const pendingOrders   = orders.filter(o => o.status==='รอดำเนินการ').length;
+  const completedOrders = orders.filter(o => o.status==='จัดส่งแล้ว').length;
+  const totalUsers      = [...new Set(orders.map(o => o.user_id))].length;
 
+  // ============================================================
+  // 🔍 กรองสินค้า (โครงสร้างเดิม)
+  // filter = "ตะแกรงร่อน" — ผ่านได้ต้องตรงทั้ง 2 เงื่อนไข
+  // ============================================================
   const filteredProducts = products.filter(item => {
-    const matchSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) || (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchCategory = selectedCategory === 'ทั้งหมด' || item.category === selectedCategory; 
-    return matchSearch && (selectedCategory === 'ทั้งหมด' ? true : matchCategory);
+    const matchSearch   = item.name.toLowerCase().includes(searchTerm.toLowerCase()) || (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchCategory = selectedCategory==='ทั้งหมด' || item.category===selectedCategory;
+    return matchSearch && (selectedCategory==='ทั้งหมด' ? true : matchCategory);
   });
 
+  // ============================================================
+  // 🚪 Logout — โครงสร้างเดิม
+  // ============================================================
   const logout = () => {
     localStorage.clear();
     setIsLoggedIn(false);
     setUserRole('user');
     setIsSidebarOpen(false);
     navigate('/login');
+    toast('ออกจากระบบเรียบร้อย', 'info');
   };
-  
+
+  // input style ใช้ร่วมกัน
+  const inp = { padding:'10px 12px', borderRadius:'8px', border:`1.5px solid ${C.border}`, fontSize:'14px', outline:'none', fontFamily:'inherit', color:C.text, background:C.surface, boxSizing:'border-box' };
+
+  // ============================================================
+  // 🖥️ RENDER — ส่วนแสดงผลบนหน้าจอ
+  // ============================================================
   return (
-  <div style={{ fontFamily: 'sans-serif', backgroundColor: '#f4f4f4', minHeight: '100vh' }}>
-    {showPayModal && (
-      <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-        <div style={{ background: 'white', padding: '30px', borderRadius: '15px', width: '100%', maxWidth: '450px', position: 'relative' }}>
-          <h2 style={{ textAlign: 'center', color: '#2ecc71' }}>💰 แจ้งชำระเงิน (ออเดอร์ #{currentOrderId})</h2>
-          <p style={{ textAlign: 'center', fontSize: '14px', color: '#666' }}>กรุณาโอนเงินมาที่: **ธนาคารกสิกรไทย 000-0-00000-0**</p>
-          <form onSubmit={handlePayment}>
-            <div style={{ marginBottom: '15px' }}><label>🏠 ที่อยู่จัดส่ง:</label><textarea required rows="3" value={address} onChange={(e) => setAddress(e.target.value)} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '5px', border: '1px solid #ddd' }} placeholder="บ้านเลขที่, ถนน, แขวง, เขต, จังหวัด..." /></div>
-            <div style={{ marginBottom: '15px' }}><label>📞 เบอร์โทรศัพท์:</label><input type="text" required value={phone} onChange={(e) => setPhone(e.target.value)} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '5px', border: '1px solid #ddd' }} placeholder="08x-xxx-xxxx" /></div>
-            <div style={{ marginBottom: '20px' }}><label>📸 อัปโหลดสลิปโอนเงิน:</label><input type="file" accept="image/*" required style={{ width: '100%', marginTop: '5px' }} onChange={(e) => setSlipFile(e.target.files[0])} /></div>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}><button type="button" onClick={() => setShowPayModal(false)} style={{ flex: 1, padding: '12px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px' }}>❌ ยกเลิก</button><button type="submit" style={{ flex: 1, padding: '12px', background: '#2ecc71', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px' }}>✅ ยืนยันชำระเงิน</button></div>
-            <button type="button" onClick={() => setShowPayModal(false)} style={{ width: '100%', marginTop: '15px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', textDecoration: 'underline' }}>ไว้ทำทีหลัง (ไปที่หน้าประวัติสั่งซื้อ)</button>
-          </form>
-        </div>
-      </div>
-    )}
-      
-    <nav style={{ background: '#2c3e50', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'white', position: 'sticky', top: 0, zIndex: 900, boxShadow: '0 2px 5px rgba(0,0,0,0.2)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}><button onClick={() => setIsSidebarOpen(true)} style={{ background: 'none', border: 'none', color: 'white', fontSize: '28px', cursor: 'pointer', padding: 0 }}>☰</button><h2 style={{ margin: 0, letterSpacing: '1px' }}>🛒 BIG SHOP</h2></div>
-      <div>{isLoggedIn ? <button onClick={logout} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>ออกจากระบบ (Logout)</button> : <div style={{ display: 'flex', gap: '10px' }}><button onClick={() => navigate('/login')} style={{ background: '#3498db', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>เข้าสู่ระบบ</button></div>}</div>
-    </nav>
+    <div style={{ fontFamily:"'Noto Sans Thai','Segoe UI',sans-serif", backgroundColor:C.bg, minHeight:'100vh' }}>
 
-    {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.5)', zIndex: 998, backdropFilter: 'blur(3px)' }} />}
+      {/* ============================================================
+          🎨 Global CSS — Font, Animation, Scrollbar, Responsive
+          ============================================================ */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800;900&display=swap');
+        * { box-sizing: border-box; margin: 0; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: ${C.bg}; }
+        ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 3px; }
 
-    <div style={{ position: 'fixed', top: 0, left: isSidebarOpen ? 0 : '-300px', width: '260px', height: '100vh', background: '#ffffff', boxShadow: '4px 0 15px rgba(0,0,0,0.1)', transition: 'left 0.3s ease-in-out', zIndex: 999, display: 'flex', flexDirection: 'column' }}>
-  <div style={{ padding: '20px', background: '#2c3e50', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h3 style={{ margin: 0 }}>เมนูหลัก</h3><button onClick={() => setIsSidebarOpen(false)} style={{ background: 'none', border: 'none', color: 'white', fontSize: '20px', cursor: 'pointer' }}>✖</button></div>
-  <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-    {isLoggedIn && userRole !== 'admin' && <Link to="/profile" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration: 'none', color: '#2c3e50', fontSize: '18px', fontWeight: 'bold', padding: '10px', background: '#f8f9fa', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>👤 โปรไฟล์ของฉัน</Link>}
-    <Link to="/" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration: 'none', color: '#2c3e50', fontSize: '18px', fontWeight: 'bold', padding: '10px', background: '#f8f9fa', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>🏠 หน้าแรก</Link>
-    {userRole !== 'admin' && <><Link to="/cart" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration: 'none', color: '#2c3e50', fontSize: '18px', fontWeight: 'bold', padding: '10px', background: '#f8f9fa', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>🛒 ตะกร้าสินค้า <span style={{ background: '#e74c3c', color: 'white', padding: '2px 8px', borderRadius: '20px', fontSize: '14px' }}>{cart.length}</span></Link>{isLoggedIn && <Link to="/my-orders" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration: 'none', color: '#2c3e50', fontSize: '18px', fontWeight: 'bold', padding: '10px', background: '#f8f9fa', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>🧾 ประวัติการสั่งซื้อ</Link>}</>}
-    {isLoggedIn && userRole === 'admin' && (
-      <div style={{ background: '#e8f6f3', borderRadius: '8px', padding: '15px 10px', marginTop: '10px', border: '1px solid #1abc9c' }}>
-        <div style={{ color: '#16a085', fontSize: '16px', fontWeight: 'bold', marginBottom: '10px', paddingLeft: '5px' }}>⚙️ ระบบหลังบ้าน</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-          <button onClick={() => { setAdminTab('report'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'report' ? '#1abc9c' : 'transparent', color: adminTab === 'report' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>📊 รายงานสถิติ</button>
-          <button onClick={() => { setAdminTab('add'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'add' ? '#1abc9c' : 'transparent', color: adminTab === 'add' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>➕ เพิ่มสินค้าใหม่</button>
-          <button onClick={() => { setAdminTab('stock'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'stock' ? '#1abc9c' : 'transparent', color: adminTab === 'stock' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>📦 จัดการสต็อก</button>
-          <button onClick={() => { setAdminTab('orders'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'orders' ? '#1abc9c' : 'transparent', color: adminTab === 'orders' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>🧾 รายการสั่งซื้อ</button>
-          {/* 🟢 [เพิ่ม]: เมนูจัดการผู้ใช้ */}
-          <button onClick={() => { setAdminTab('users'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'users' ? '#1abc9c' : 'transparent', color: adminTab === 'users' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>👥 จัดการผู้ใช้</button>
-        </div>
-      </div>
-    )}
-  </div>
-</div>
+        /* Animation Toast — เลื่อนเข้าจากขวา */
+        @keyframes toastSlideIn {
+          from { opacity: 0; transform: translateX(40px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+        /* Animation CartPopup — ป๊อบขึ้นกลางจอ */
+        @keyframes cartPopIn {
+          0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
+          70%  { transform: translate(-50%, -50%) scale(1.06); }
+          100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+        /* Animation Modal */
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(18px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
 
-    <Routes>
-      <Route path="/" element={
-        <div style={{ backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
-          <div style={{ textAlign: 'center', padding: '60px 20px', background: 'linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)', color: 'white' }}>
-            <h1 style={{ fontSize: '3.5rem', margin: 0, fontWeight: '800', letterSpacing: '-1px' }}>🛍️ BIG1919 SHOP</h1>
-            <p style={{ fontSize: '1.3rem', opacity: 0.9, marginTop: '10px' }}>"ช้อปใหญ่ จ่ายน้อย สอยทุกความคุ้ม!"</p>
-            <div style={{ marginTop: '30px' }}><input type="text" placeholder="🔍 ค้นหาสินค้าที่ใช่สำหรับคุณ..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '15px 25px', width: '85%', maxWidth: '600px', borderRadius: '50px', border: 'none', fontSize: '18px', boxShadow: '0 10px 20px rgba(0,0,0,0.2)' }} /></div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', padding: '25px', flexWrap: 'wrap' }}>
-            {['ทั้งหมด', ...new Set(products.map(p => p.category).filter(cat => cat && cat !== 'ทั้งหมด'))].map(cat => (
-              <button key={cat} onClick={() => setSelectedCategory(cat)} style={{ padding: '10px 25px', borderRadius: '25px', cursor: 'pointer', fontWeight: 'bold', background: selectedCategory === cat ? '#2c3e50' : 'white', color: selectedCategory === cat ? 'white' : '#333', border: '1px solid #ddd', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', transition: '0.3s' }}>{cat}</button>
-            ))}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '25px', marginTop: '30px', padding: '0 20px' }}>
-            {filteredProducts.map(item => (
-              <div key={item.id} style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', textAlign: 'center', overflow: 'hidden' }}>
-                {/* 🟢 [แก้ไข]: เปลี่ยนจาก localhost เป็น Cloud URL (item.image) */}
-                {item.image ? <img src={item.image} alt={item.name} style={{ width: '100%', height: '180px', objectFit: 'cover' }} /> : <div style={{ fontSize: '80px', padding: '20px', background: '#eee' }}>📦</div>}
-                <div style={{ padding: '20px' }}>
-                  <h3>{item.name}</h3>
-                  <p style={{ fontSize: '20px', fontWeight: 'bold', color: '#e74c3c' }}>฿{item.price}</p>
-                  <p style={{ color: item.stock > 0 ? '#27ae60' : '#e74c3c', fontWeight: 'bold' }}>{item.stock > 0 ? `คงเหลือ: ${item.stock} ชิ้น` : 'สินค้าหมด'}</p>
-                  <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                    <button onClick={() => navigate(`/product/${item.id}`)} style={{ flex: 1, padding: '10px', background: '#ecf0f1', color: '#2c3e50', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>🔍 รายละเอียด</button>
-                    <button onClick={() => addToCart(item)} disabled={item.stock <= 0} style={{ flex: 1, background: item.stock > 0 ? '#2c3e50' : '#bdc3c7', color: 'white', border: 'none', padding: '10px', borderRadius: '5px', cursor: item.stock > 0 ? 'pointer' : 'not-allowed' }}>{item.stock > 0 ? 'ใส่ตะกร้า' : 'หมด'}</button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <footer style={{ marginTop: '50px', padding: '40px', background: '#2c3e50', color: 'white', textAlign: 'center' }}><p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>🛍️ BIG SHOP - ร้านค้าอันดับ 1 ของทุกคน</p><p style={{ opacity: 0.7 }}>ติดต่อเรา: 093-112-1917 | Line: @phuwadet5617</p><hr style={{ width: '50px', margin: '20px auto', borderColor: '#555' }} /><p style={{ fontSize: '14px', opacity: 0.5 }}>© 2026 BIG SHOP. All rights reserved.</p></footer>
-        </div>
-      } />
+        /* ===== Responsive Mobile ===== */
+        @media (max-width: 768px) {
+          .product-grid  { grid-template-columns: 1fr 1fr !important; gap: 12px !important; }
+          .cart-row      { flex-wrap: wrap !important; }
+          .admin-stats   { grid-template-columns: 1fr 1fr !important; }
+          .admin-form-grid { grid-template-columns: 1fr !important; }
+          .orders-table  { font-size: 11px !important; }
+          .hero-title    { font-size: 2rem !important; }
+        }
+        @media (max-width: 480px) {
+          .product-grid  { grid-template-columns: 1fr !important; }
+          .admin-stats   { grid-template-columns: 1fr !important; }
+        }
 
-      <Route path="/profile" element={ isLoggedIn ? <ProfilePage userId={userId} /> : <Navigate to="/login" /> } />
-      <Route path="/product/:id" element={<ProductDetailPage products={products} addToCart={addToCart} />} />
+        button:not(:disabled):active { transform: scale(0.97); }
+      `}</style>
 
-      <Route path="/cart" element={
-        <div style={{ padding: '40px', maxWidth: '800px', margin: '0 auto' }}>
-          <h2>🛒 ตะกร้าสินค้า {cart.length > 0 && <button onClick={clearCart} style={{ background: '#ff7675', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', cursor: 'pointer', fontSize: '14px', float: 'right' }}>🗑️ ยกเลิกรายการทั้งหมด</button>}</h2>
-          <div style={{ background: 'white', padding: '20px', borderRadius: '15px', boxShadow: '0 5px 15px rgba(0,0,0,0.05)' }}>
-            {cart.length === 0 ? <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>ตะกร้าว่างเปล่า</div> : (
+      {/* ============================================================
+          🍞 Toast Notifications — ลอยมุมขวาบน
+          ============================================================ */}
+      <ToastContainer toasts={toasts} onRemove={(id) => setToasts(prev => prev.filter(t => t.id !== id))} />
+
+      {/* ============================================================
+          🛍️ Cart Popup — โชว์กลางจอตอนเพิ่มสินค้า
+          ============================================================ */}
+      <CartPopup popup={cartPopup} />
+
+      {/* ============================================================
+          💳 Modal แจ้งชำระเงิน — ลอยเหนือทุกหน้า (โครงสร้างเดิม)
+          ============================================================ */}
+      {showPayModal && (
+        <div onClick={e => e.target===e.currentTarget && setShowPayModal(false)} style={{
+          position:'fixed', top:0, left:0, width:'100%', height:'100%',
+          background:'rgba(15,23,42,0.65)', backdropFilter:'blur(4px)',
+          display:'flex', justifyContent:'center', alignItems:'center',
+          zIndex:5000, padding:'20px',
+        }}>
+          <div style={{ background:C.surface, padding:'clamp(20px,4vw,32px)', borderRadius:'20px', width:'100%', maxWidth:'460px', boxShadow:'0 24px 64px rgba(0,0,0,0.25)', animation:'fadeUp 0.3s ease', border:`1px solid ${C.border}` }}>
+            <p style={{ fontSize:'11px', color:C.textMuted, margin:'0 0 4px' }}>ออเดอร์ #{currentOrderId}</p>
+            <h2 style={{ margin:'0 0 6px', color:C.text, fontSize:'20px' }}>💰 แจ้งชำระเงิน</h2>
+            <p style={{ fontSize:'13px', color:C.textSub, margin:'0 0 20px' }}>โอนมาที่ <strong style={{ color:C.primary }}>ธนาคารกสิกรไทย 000-0-00000-0</strong></p>
+            <form onSubmit={handlePayment} style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
               <div>
-                {cart.map((item) => (
-                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '15px', borderBottom: '1px solid #eee', padding: '15px 0' }}>
-                    {/* 🟢 [แก้ไข]: เปลี่ยนรูปสินค้าในตะกร้าเป็น Cloud URL (item.image) */}
-                    <img src={item.image} alt={item.name} style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '8px' }} />
-                    <div style={{ flex: 1 }}><h4 style={{ margin: '0' }}>{item.name}</h4><p style={{ margin: 0, color: '#e74c3c', fontWeight: 'bold' }}>฿{item.price}</p></div>
-                    <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #ddd', borderRadius: '5px' }}><button onClick={() => updateQuantity(item.id, -1)} style={{ background: '#f8f9fa', border: 'none', padding: '8px 12px' }}>-</button><span style={{ padding: '0 15px' }}>{item.qty}</span><button onClick={() => updateQuantity(item.id, 1)} style={{ background: '#f8f9fa', border: 'none', padding: '8px 12px' }}>+</button></div>
-                    <div style={{ width: '80px', textAlign: 'right', fontWeight: 'bold' }}>฿{(item.price * item.qty).toLocaleString()}</div>
-                    <button onClick={() => removeFromCart(item.id)} style={{ background: 'none', border: 'none', color: '#ff7675', fontSize: '18px' }}>✖</button>
+                <label style={{ fontSize:'12px', fontWeight:'700', color:C.textSub, textTransform:'uppercase', letterSpacing:'0.5px' }}>🏠 ที่อยู่จัดส่ง</label>
+                <textarea required rows="3" value={address} onChange={(e) => setAddress(e.target.value)} style={{ ...inp, width:'100%', marginTop:'6px', resize:'none', lineHeight:'1.5' }} placeholder="บ้านเลขที่, ถนน, แขวง, เขต, จังหวัด..." />
+              </div>
+              <div>
+                <label style={{ fontSize:'12px', fontWeight:'700', color:C.textSub, textTransform:'uppercase', letterSpacing:'0.5px' }}>📞 เบอร์โทร</label>
+                <input type="text" required value={phone} onChange={(e) => setPhone(e.target.value)} style={{ ...inp, width:'100%', marginTop:'6px' }} placeholder="08x-xxx-xxxx" />
+              </div>
+              <div>
+                <label style={{ fontSize:'12px', fontWeight:'700', color:C.textSub, textTransform:'uppercase', letterSpacing:'0.5px' }}>📸 สลิปโอนเงิน</label>
+                <input type="file" accept="image/*" required style={{ ...inp, width:'100%', marginTop:'6px', cursor:'pointer', padding:'8px' }} onChange={(e) => setSlipFile(e.target.files[0])} />
+              </div>
+              <div style={{ display:'flex', gap:'10px', marginTop:'4px' }}>
+                <button type="button" onClick={() => setShowPayModal(false)} style={{ flex:1, padding:'12px', background:C.dangerLight, color:C.danger, border:'none', borderRadius:'10px', cursor:'pointer', fontWeight:'700', fontFamily:'inherit' }}>❌ ยกเลิก</button>
+                <button type="submit" style={{ flex:2, padding:'12px', background:`linear-gradient(135deg,${C.success},#059669)`, color:'white', border:'none', borderRadius:'10px', cursor:'pointer', fontWeight:'700', fontSize:'14px', fontFamily:'inherit' }}>✅ ยืนยันชำระเงิน</button>
+              </div>
+              <button type="button" onClick={() => setShowPayModal(false)} style={{ background:'none', border:'none', color:C.textMuted, cursor:'pointer', fontFamily:'inherit', fontSize:'13px', textDecoration:'underline' }}>ไว้ทำทีหลัง</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          📌 Navbar บนสุด — Topbar ที่เห็นทุกหน้า
+          ============================================================ */}
+      <nav style={{
+        background:C.sidebar, padding:'0 20px',
+        display:'flex', justifyContent:'space-between', alignItems:'center',
+        color:'white', position:'sticky', top:0, zIndex:900,
+        height:'60px', boxShadow:'0 2px 12px rgba(0,0,0,0.2)',
+      }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'14px' }}>
+          {/* ปุ่ม ☰ เปิด/ปิด Sidebar */}
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{
+            background:'rgba(255,255,255,0.08)', border:'none', borderRadius:'8px',
+            color:'white', fontSize:'20px', cursor:'pointer',
+            width:'36px', height:'36px', display:'flex', alignItems:'center', justifyContent:'center',
+          }}>☰</button>
+          <h2 style={{ margin:0, letterSpacing:'1px', fontSize:'18px', fontWeight:'900', color:'#f59e0b' }}>
+            🛒 BIG SHOP
+          </h2>
+        </div>
+        <div>
+          {isLoggedIn
+            ? <button onClick={logout} style={{ background:'rgba(239,68,68,0.15)', border:'1px solid rgba(239,68,68,0.3)', color:'#fca5a5', padding:'7px 14px', borderRadius:'8px', cursor:'pointer', fontWeight:'600', fontSize:'13px', fontFamily:'inherit' }}>🚪 ออกจากระบบ</button>
+            : <button onClick={() => navigate('/login')} style={{ background:`linear-gradient(135deg,${C.primary},${C.primaryDark})`, color:'white', border:'none', padding:'8px 16px', borderRadius:'8px', cursor:'pointer', fontWeight:'700', fontFamily:'inherit' }}>🔐 เข้าสู่ระบบ</button>
+          }
+        </div>
+      </nav>
+
+      {/* ============================================================
+          📌 Sidebar — แถบเมนูด้านซ้าย
+          เปรียบเหมือน "บานประตูเลื่อน" ที่ซ่อนเมนูไว้
+          กดปุ่ม ☰ หรือกดพื้นหลังเพื่อเปิด/ปิด
+          ============================================================ */}
+
+      {/* Overlay — กดปิด Sidebar (โครงสร้างเดิม) */}
+      {isSidebarOpen && (
+        <div onClick={() => setIsSidebarOpen(false)} style={{
+          position:'fixed', top:0, left:0, width:'100vw', height:'100vh',
+          background:'rgba(0,0,0,0.45)', zIndex:998, backdropFilter:'blur(2px)',
+        }} />
+      )}
+
+      {/* ตัว Sidebar */}
+      <div style={{
+        position:'fixed', top:0,
+        left:isSidebarOpen ? 0 : '-300px', // ซ่อนไปทางซ้ายเมื่อปิด
+        width:'260px', height:'100vh',
+        background:C.sidebar,
+        boxShadow:isSidebarOpen ? '4px 0 24px rgba(0,0,0,0.2)' : 'none',
+        transition:'left 0.3s cubic-bezier(0.4,0,0.2,1)',
+        zIndex:999, display:'flex', flexDirection:'column', overflowX:'hidden',
+      }}>
+
+        {/* หัว Sidebar — โลโก้ + ปุ่มปิด */}
+        <div style={{ padding:'16px', background:'rgba(0,0,0,0.2)', display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid rgba(255,255,255,0.07)', flexShrink:0 }}>
+          <div>
+            <div style={{ fontWeight:'900', fontSize:'17px', color:'#f59e0b', letterSpacing:'2px' }}>🛍 BIG SHOP</div>
+            <div style={{ fontSize:'11px', color:'rgba(255,255,255,0.4)', marginTop:'2px' }}>
+              {userRole==='admin' ? '⚙️ Admin Panel' : 'ช้อปใหญ่ จ่ายน้อย 🚀'}
+            </div>
+          </div>
+          <button onClick={() => setIsSidebarOpen(false)} style={{ background:'rgba(255,255,255,0.08)', border:'none', borderRadius:'8px', color:'rgba(255,255,255,0.6)', fontSize:'16px', cursor:'pointer', width:'30px', height:'30px', display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+        </div>
+
+        {/* รายการเมนู */}
+        <div style={{ padding:'12px 10px', display:'flex', flexDirection:'column', gap:'3px', flex:1, overflowY:'auto' }}>
+
+          {/* ============================================================
+              เมนูสำหรับ "ลูกค้า" — โชว์เมื่อ role ไม่ใช่ admin
+              ลำดับ: โปรไฟล์ → หน้าแรก → ตะกร้า → ประวัติสั่งซื้อ
+              ============================================================ */}
+          {userRole !== 'admin' && (
+            <>
+              {isLoggedIn && (
+                <Link to="/profile" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration:'none', color:'rgba(255,255,255,0.7)', fontSize:'15px', fontWeight:'500', padding:'10px 12px', borderRadius:'10px', display:'flex', alignItems:'center', gap:'10px', transition:'background 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.background=C.sidebarHover}
+                  onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                  👤 โปรไฟล์ของฉัน
+                </Link>
+              )}
+
+              {/* 1️⃣ หน้าแรก */}
+              <Link to="/" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration:'none', color:'rgba(255,255,255,0.85)', fontSize:'15px', fontWeight:'600', padding:'10px 12px', borderRadius:'10px', display:'flex', alignItems:'center', gap:'10px', transition:'background 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.background=C.sidebarHover}
+                onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                🏠 หน้าแรก
+              </Link>
+
+              {/* 2️⃣ ตะกร้าสินค้า + Badge จำนวน */}
+              <Link to="/cart" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration:'none', color:'rgba(255,255,255,0.85)', fontSize:'15px', fontWeight:'600', padding:'10px 12px', borderRadius:'10px', display:'flex', alignItems:'center', gap:'10px', justifyContent:'space-between', transition:'background 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.background=C.sidebarHover}
+                onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                <span style={{ display:'flex', alignItems:'center', gap:'10px' }}>🛒 ตะกร้าสินค้า</span>
+                {/* Badge แสดงจำนวนสินค้าในตะกร้า */}
+                {cart.length > 0 && (
+                  <span style={{ background:C.danger, color:'white', padding:'2px 8px', borderRadius:'999px', fontSize:'12px', fontWeight:'800' }}>{cart.length}</span>
+                )}
+              </Link>
+
+              {/* 3️⃣ ประวัติการสั่งซื้อ (เฉพาะล็อกอินแล้ว) */}
+              {isLoggedIn && (
+                <Link to="/my-orders" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration:'none', color:'rgba(255,255,255,0.85)', fontSize:'15px', fontWeight:'600', padding:'10px 12px', borderRadius:'10px', display:'flex', alignItems:'center', gap:'10px', transition:'background 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.background=C.sidebarHover}
+                  onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                  🧾 ประวัติการสั่งซื้อ
+                </Link>
+              )}
+            </>
+          )}
+
+          {/* ============================================================
+              เมนูสำหรับ "Admin" — กล่องเมนูย่อยระบบหลังบ้าน
+              ============================================================ */}
+          {isLoggedIn && userRole==='admin' && (
+            <>
+              <Link to="/" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration:'none', color:'rgba(255,255,255,0.4)', fontSize:'14px', fontWeight:'500', padding:'10px 12px', borderRadius:'10px', display:'flex', alignItems:'center', gap:'10px', transition:'background 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.background=C.sidebarHover}
+                onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                🏪 หน้าร้าน
+              </Link>
+
+              {/* Label */}
+              <div style={{ fontSize:'10px', color:'rgba(255,255,255,0.3)', fontWeight:'700', letterSpacing:'1px', padding:'10px 12px 4px', textTransform:'uppercase' }}>ระบบหลังบ้าน</div>
+
+              {/* เมนูย่อย Admin — กด → เปลี่ยน adminTab */}
+              {[
+                { tab:'report', icon:'📊', label:'รายงานสถิติ' },
+                { tab:'add',    icon:'➕', label:'เพิ่มสินค้าใหม่' },
+                { tab:'stock',  icon:'📦', label:'จัดการสต็อก' },
+                { tab:'orders', icon:'🧾', label:'รายการสั่งซื้อ' },
+                { tab:'users',  icon:'👥', label:'จัดการผู้ใช้' },
+              ].map(m => (
+                <button key={m.tab}
+                  onClick={() => { setAdminTab(m.tab); navigate('/admin'); setIsSidebarOpen(false); }}
+                  style={{
+                    textAlign:'left', fontFamily:'inherit',
+                    background: adminTab===m.tab ? 'rgba(99,102,241,0.25)' : 'transparent',
+                    color: adminTab===m.tab ? '#a5b4fc' : 'rgba(255,255,255,0.65)',
+                    border:'none', padding:'10px 12px', borderRadius:'8px', cursor:'pointer',
+                    fontWeight: adminTab===m.tab ? '700' : '500', transition:'all 0.15s',
+                    fontSize:'14px', display:'flex', alignItems:'center', gap:'8px', width:'100%',
+                  }}
+                  onMouseEnter={e => adminTab!==m.tab && (e.currentTarget.style.background=C.sidebarHover)}
+                  onMouseLeave={e => adminTab!==m.tab && (e.currentTarget.style.background='transparent')}>
+                  {m.icon} {m.label}
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+
+        {/* ปุ่ม Login / Logout ด้านล่าง Sidebar */}
+        <div style={{ padding:'12px 10px', borderTop:'1px solid rgba(255,255,255,0.07)', flexShrink:0 }}>
+          {isLoggedIn
+            ? <button onClick={logout} style={{ width:'100%', background:'rgba(239,68,68,0.12)', border:'1px solid rgba(239,68,68,0.25)', borderRadius:'10px', color:'#fca5a5', cursor:'pointer', padding:'10px 12px', display:'flex', alignItems:'center', gap:'10px', fontSize:'14px', fontWeight:'600', fontFamily:'inherit' }}>🚪 ออกจากระบบ</button>
+            : <Link to="/login" onClick={() => setIsSidebarOpen(false)} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 12px', borderRadius:'10px', background:'rgba(99,102,241,0.2)', color:'#a5b4fc', textDecoration:'none', fontSize:'14px', fontWeight:'600' }}>🔐 เข้าสู่ระบบ</Link>
+          }
+        </div>
+      </div>
+      {/* 🟢 สิ้นสุด Sidebar */}
+
+      {/* ============================================================
+          📄 Routes — หน้าต่างๆ ทั้งหมดของแอป
+          ============================================================ */}
+      <Routes>
+
+        {/* =================================================
+            🏠 หน้าแรก — Hero, ค้นหา, หมวดหมู่, สินค้า, Footer
+            ================================================= */}
+        <Route path="/" element={
+          <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', backgroundColor:C.bg }}>
+
+            {/* Hero Banner */}
+            <div style={{ textAlign:'center', padding:'clamp(40px,8vw,80px) 20px', background:'linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)', color:'white', position:'relative', overflow:'hidden' }}>
+              <div style={{ position:'absolute', top:'-80px', right:'-80px', width:'280px', height:'280px', borderRadius:'50%', background:'rgba(255,255,255,0.05)' }} />
+              <div style={{ position:'absolute', bottom:'-60px', left:'-60px', width:'200px', height:'200px', borderRadius:'50%', background:'rgba(255,255,255,0.05)' }} />
+              <p style={{ color:'rgba(255,255,255,0.65)', fontSize:'12px', fontWeight:'700', letterSpacing:'4px', textTransform:'uppercase', margin:'0 0 10px' }}>ยินดีต้อนรับสู่</p>
+              <h1 className="hero-title" style={{ fontSize:'3.5rem', margin:'0 0 8px', fontWeight:'900', letterSpacing:'2px' }}>🛍️ BIG SHOP</h1>
+              <p style={{ fontSize:'clamp(14px,2.5vw,20px)', opacity:0.9, margin:'0 0 4px' }}>"ช้อปใหญ่ จ่ายน้อย สอยทุกความคุ้ม!"</p>
+              <p style={{ fontSize:'13px', opacity:0.55, margin:'0 0 28px' }}>🔥 ดีลพิเศษทุกวัน • ส่งฟรีเมื่อซื้อครบ ฿500</p>
+              {/* ช่องค้นหา */}
+              <div style={{ position:'relative', maxWidth:'560px', margin:'0 auto' }}>
+                <span style={{ position:'absolute', left:'18px', top:'50%', transform:'translateY(-50%)', fontSize:'18px', pointerEvents:'none' }}>🔍</span>
+                <input type="text" placeholder="ค้นหาสินค้าที่ใช่สำหรับคุณ..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                  style={{ padding:'14px 20px 14px 50px', width:'100%', borderRadius:'999px', border:'none', fontSize:'15px', boxShadow:'0 8px 32px rgba(0,0,0,0.2)', outline:'none', fontFamily:'inherit' }} />
+              </div>
+            </div>
+
+            {/* แถบหมวดหมู่ */}
+            <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, padding:'12px 20px' }}>
+              <div style={{ display:'flex', gap:'8px', overflowX:'auto', paddingBottom:'2px' }}>
+                {['ทั้งหมด', ...new Set(products.map(p => p.category).filter(cat => cat && cat!=='ทั้งหมด'))].map(cat => (
+                  <button key={cat} onClick={() => setSelectedCategory(cat)} style={{
+                    padding:'7px 18px', borderRadius:'999px', cursor:'pointer', fontWeight:'600',
+                    background: selectedCategory===cat ? C.primary : C.surface,
+                    color: selectedCategory===cat ? 'white' : C.textSub,
+                    border:`1.5px solid ${selectedCategory===cat ? C.primary : C.border}`,
+                    fontSize:'13px', whiteSpace:'nowrap', transition:'0.2s', fontFamily:'inherit',
+                  }}>{cat}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Grid สินค้า */}
+            <main style={{ flex:1, padding:'clamp(16px,3vw,24px)' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px', flexWrap:'wrap', gap:'8px' }}>
+                <h2 style={{ margin:0, fontSize:'18px', fontWeight:'800', color:C.text }}>
+                  {selectedCategory==='ทั้งหมด' ? 'สินค้าทั้งหมด' : `หมวด: ${selectedCategory}`}
+                </h2>
+                <span style={{ fontSize:'13px', color:C.textMuted }}>{filteredProducts.length} รายการ</span>
+              </div>
+              <div className="product-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))', gap:'18px' }}>
+                {filteredProducts.map(item => (
+                  <div key={item.id} style={{ background:C.surface, borderRadius:'16px', overflow:'hidden', border:`1px solid ${C.border}`, boxShadow:'0 2px 8px rgba(0,0,0,0.05)', transition:'transform 0.2s, box-shadow 0.2s', display:'flex', flexDirection:'column' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform='translateY(-4px)'; e.currentTarget.style.boxShadow='0 12px 28px rgba(99,102,241,0.14)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='0 2px 8px rgba(0,0,0,0.05)'; }}>
+                    <div style={{ height:'170px', background:C.bg, overflow:'hidden', position:'relative' }}>
+                      {item.image
+                        ? <img src={item.image} alt={item.name} style={{ width:'100%', height:'100%', objectFit:'cover', transition:'transform 0.3s' }} onMouseEnter={e => e.target.style.transform='scale(1.05)'} onMouseLeave={e => e.target.style.transform='scale(1)'} />
+                        : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'48px' }}>📦</div>}
+                      {item.category && <span style={{ position:'absolute', top:'8px', left:'8px', background:'rgba(0,0,0,0.55)', color:'#fff', fontSize:'10px', padding:'3px 8px', borderRadius:'999px', fontWeight:'600' }}>{item.category}</span>}
+                    </div>
+                    <div style={{ padding:'14px', flex:1, display:'flex', flexDirection:'column', gap:'6px' }}>
+                      <h3 style={{ margin:0, fontSize:'14px', fontWeight:'700', color:C.text, lineHeight:1.3 }}>{item.name}</h3>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                        <p style={{ margin:0, fontSize:'18px', fontWeight:'800', color:C.danger }}>฿{Number(item.price).toLocaleString()}</p>
+                        <p style={{ margin:0, fontSize:'11px', fontWeight:'700', color:item.stock>0 ? C.success : C.danger }}>{item.stock>0 ? `✅ ${item.stock} ชิ้น` : '❌ หมด'}</p>
+                      </div>
+                      <div style={{ display:'flex', gap:'6px', marginTop:'4px' }}>
+                        <button onClick={() => navigate(`/product/${item.id}`)} style={{ flex:1, padding:'8px', background:C.bg, color:C.textSub, border:`1.5px solid ${C.border}`, borderRadius:'8px', cursor:'pointer', fontWeight:'600', fontSize:'12px', fontFamily:'inherit' }}>🔍 รายละเอียด</button>
+                        <button onClick={() => addToCart(item)} disabled={item.stock<=0} style={{ flex:1, padding:'8px', background:item.stock>0 ? `linear-gradient(135deg,${C.primary},${C.primaryDark})` : C.textMuted, color:'white', border:'none', borderRadius:'8px', cursor:item.stock>0 ? 'pointer' : 'not-allowed', fontWeight:'700', fontSize:'12px', fontFamily:'inherit' }}>
+                          {item.stock>0 ? '🛒 ใส่ตะกร้า' : '❌ หมด'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ))}
-                <div style={{ marginTop: '30px', textAlign: 'right' }}><h2>รวม: <span style={{ color: '#e74c3c' }}>฿{calculateTotal().toLocaleString()}</span></h2><button onClick={() => { if (isLoggedIn) { 
-                  // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
-                  axios.get(`${API_URL}/users/${userId}`).then(res => { setAddress(res.data.address || ''); setPhone(res.data.phone || ''); checkout(); }); } else { navigate('/login'); } }} style={{ padding: '15px 40px', background: '#2ecc71', color: 'white', border: 'none', borderRadius: '5px', fontSize: '18px', fontWeight: 'bold' }}>{isLoggedIn ? "✅ ยืนยันการสั่งซื้อ" : "🔑 ล็อกอินเพื่อสั่งซื้อ"}</button></div>
               </div>
-            )}
-          </div>
-        </div>
-      } />
+            </main>
 
-      <Route path="/my-orders" element={
-        <div style={{ padding: '30px', maxWidth: '900px', margin: '0 auto' }}>
-          <h1 style={{ textAlign: 'center' }}>📋 ประวัติการสั่งซื้อของฉัน</h1>
-          <div style={{ background: 'white', padding: '20px', borderRadius: '15px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
-            {myOrders.length === 0 ? <p style={{ textAlign: 'center' }}>ยังไม่มีรายการสั่งซื้อ</p> : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr style={{ borderBottom: '2px solid #eee', textAlign: 'left' }}><th style={{ padding: '12px' }}>เลขที่ออเดอร์</th><th>วันที่สั่ง</th><th>ราคารวม</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
-                <tbody>
+            {/* Footer */}
+            <footer style={{ background:C.sidebar, color:'rgba(255,255,255,0.7)', padding:'clamp(24px,4vw,40px)' }}>
+              <div style={{ maxWidth:'900px', margin:'0 auto', display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))', gap:'24px' }}>
+                <div>
+                  <div style={{ fontWeight:'900', fontSize:'18px', color:'#f59e0b', letterSpacing:'2px', marginBottom:'8px' }}>🛍️ BIG SHOP</div>
+                  <p style={{ fontSize:'13px', lineHeight:'1.6', margin:0 }}>สินค้าดี ราคาโดน บริการประทับใจ จัดส่งทั่วไทย</p>
+                </div>
+                <div>
+                  <h4 style={{ color:'white', margin:'0 0 10px', fontSize:'14px' }}>เมนูหลัก</h4>
+                  <Link to="/" style={{ display:'block', color:'rgba(255,255,255,0.55)', textDecoration:'none', fontSize:'13px', marginBottom:'5px' }}>🏠 หน้าแรก</Link>
+                  <Link to="/cart" style={{ display:'block', color:'rgba(255,255,255,0.55)', textDecoration:'none', fontSize:'13px', marginBottom:'5px' }}>🛒 ตะกร้าสินค้า</Link>
+                  {isLoggedIn && <Link to="/my-orders" style={{ display:'block', color:'rgba(255,255,255,0.55)', textDecoration:'none', fontSize:'13px' }}>🧾 ประวัติออเดอร์</Link>}
+                </div>
+                <div>
+                  <h4 style={{ color:'white', margin:'0 0 10px', fontSize:'14px' }}>ติดต่อเรา</h4>
+                  <p style={{ fontSize:'13px', margin:'0 0 5px' }}>📞 093-112-1917</p>
+                  <p style={{ fontSize:'13px', margin:'0 0 5px' }}>💬 Line: @phuwadet5617</p>
+                  <p style={{ fontSize:'13px', margin:0 }}>🕐 จ–ศ 9:00–18:00 น.</p>
+                </div>
+              </div>
+              <div style={{ borderTop:'1px solid rgba(255,255,255,0.08)', marginTop:'24px', paddingTop:'14px', textAlign:'center', fontSize:'12px' }}>
+                © 2026 BIG SHOP. All rights reserved.
+              </div>
+            </footer>
+          </div>
+        } />
+
+        {/* โปรไฟล์ */}
+        <Route path="/profile" element={isLoggedIn ? <ProfilePage userId={userId} /> : <Navigate to="/login" />} />
+
+        {/* รายละเอียดสินค้า */}
+        <Route path="/product/:id" element={<ProductDetailPage products={products} addToCart={addToCart} />} />
+
+        {/* =================================================
+            🛒 หน้าตะกร้าสินค้า (โครงสร้างเดิม)
+            ================================================= */}
+        <Route path="/cart" element={
+          <div style={{ padding:'clamp(16px,4vw,40px)', maxWidth:'800px', margin:'0 auto' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', flexWrap:'wrap', gap:'10px' }}>
+              <h2 style={{ margin:0, fontSize:'22px', fontWeight:'900', color:C.text }}>
+                🛒 ตะกร้าสินค้า
+                {cart.length>0 && <span style={{ marginLeft:'10px', background:C.primaryLight, color:C.primary, padding:'3px 12px', borderRadius:'999px', fontSize:'14px', fontWeight:'700' }}>{cart.length}</span>}
+              </h2>
+              {cart.length>0 && <button onClick={clearCart} style={{ background:C.dangerLight, color:C.danger, border:`1.5px solid ${C.danger}`, padding:'8px 16px', borderRadius:'8px', cursor:'pointer', fontSize:'13px', fontWeight:'600', fontFamily:'inherit' }}>🗑️ ล้างตะกร้า</button>}
+            </div>
+            <div style={{ background:C.surface, borderRadius:'16px', border:`1px solid ${C.border}`, overflow:'hidden' }}>
+              {cart.length===0 ? (
+                <div style={{ textAlign:'center', padding:'60px 40px' }}>
+                  <p style={{ fontSize:'56px', margin:'0 0 12px' }}>🛒</p>
+                  <p style={{ color:C.textSub, fontSize:'16px', margin:'0 0 20px' }}>ตะกร้าว่างเปล่า</p>
+                  <Link to="/" style={{ background:`linear-gradient(135deg,${C.primary},${C.primaryDark})`, color:'white', textDecoration:'none', padding:'12px 24px', borderRadius:'10px', fontWeight:'700', display:'inline-block' }}>← กลับไปเลือกสินค้า</Link>
+                </div>
+              ) : (
+                <div>
+                  {cart.map((item) => (
+                    <div key={item.id} className="cart-row" style={{ display:'flex', alignItems:'center', gap:'14px', borderBottom:`1px solid ${C.border}`, padding:'16px 20px' }}>
+                      {/* รูปสินค้า ดึงจาก Cloudinary URL */}
+                      <img src={item.image} alt={item.name} style={{ width:'64px', height:'64px', objectFit:'cover', borderRadius:'10px', flexShrink:0 }} />
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <h4 style={{ margin:'0 0 4px', fontSize:'14px', fontWeight:'700', color:C.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.name}</h4>
+                        <p style={{ margin:0, color:C.danger, fontWeight:'800', fontSize:'15px' }}>฿{Number(item.price).toLocaleString()}</p>
+                      </div>
+                      <div style={{ display:'flex', alignItems:'center', border:`1.5px solid ${C.border}`, borderRadius:'8px', overflow:'hidden', flexShrink:0 }}>
+                        <button onClick={() => updateQuantity(item.id, -1)} style={{ background:C.bg, border:'none', padding:'7px 12px', cursor:'pointer', fontSize:'16px', fontWeight:'700' }}>−</button>
+                        <span style={{ padding:'0 12px', fontWeight:'800', fontSize:'15px' }}>{item.qty}</span>
+                        <button onClick={() => updateQuantity(item.id, 1)} style={{ background:C.bg, border:'none', padding:'7px 12px', cursor:'pointer', fontSize:'16px', fontWeight:'700' }}>+</button>
+                      </div>
+                      <div style={{ width:'80px', textAlign:'right', fontWeight:'800', color:C.text, flexShrink:0 }}>฿{(item.price*item.qty).toLocaleString()}</div>
+                      <button onClick={() => removeFromCart(item.id)} style={{ background:C.dangerLight, border:'none', color:C.danger, cursor:'pointer', fontSize:'14px', borderRadius:'8px', padding:'6px 10px', flexShrink:0 }}>✕</button>
+                    </div>
+                  ))}
+                  <div style={{ padding:'20px', background:C.bg, borderTop:`1px solid ${C.border}` }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
+                      <span style={{ color:C.textSub, fontSize:'14px' }}>ยอดรวม</span>
+                      <span style={{ fontSize:'24px', fontWeight:'900', color:C.text }}>฿{calculateTotal().toLocaleString()}</span>
+                    </div>
+                    <button onClick={() => {
+                      if (isLoggedIn) {
+                        // ดึงที่อยู่จากโปรไฟล์ก่อน (โครงสร้างเดิม)
+                        axios.get(`${API_URL}/users/${userId}`).then(res => { setAddress(res.data.address||''); setPhone(res.data.phone||''); checkout(); });
+                      } else navigate('/login');
+                    }} style={{ width:'100%', padding:'14px', background:isLoggedIn ? `linear-gradient(135deg,${C.success},#059669)` : `linear-gradient(135deg,${C.primary},${C.primaryDark})`, color:'white', border:'none', borderRadius:'12px', fontSize:'16px', fontWeight:'800', cursor:'pointer', fontFamily:'inherit' }}>
+                      {isLoggedIn ? "✅ ยืนยันการสั่งซื้อ" : "🔑 ล็อกอินเพื่อสั่งซื้อ"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        } />
+
+        {/* =================================================
+            📋 หน้าประวัติการสั่งซื้อ (โครงสร้างเดิม)
+            ================================================= */}
+        <Route path="/my-orders" element={
+          <div style={{ padding:'clamp(16px,4vw,30px)', maxWidth:'900px', margin:'0 auto' }}>
+            <h1 style={{ fontSize:'22px', fontWeight:'900', color:C.text, margin:'0 0 20px' }}>📋 ประวัติการสั่งซื้อ</h1>
+            <div style={{ background:C.surface, borderRadius:'16px', border:`1px solid ${C.border}`, overflow:'hidden' }}>
+              {myOrders.length===0 ? (
+                <div style={{ textAlign:'center', padding:'60px' }}>
+                  <p style={{ fontSize:'40px', margin:'0 0 12px' }}>📭</p>
+                  <p style={{ color:C.textSub }}>ยังไม่มีรายการสั่งซื้อ</p>
+                </div>
+              ) : (
+                <div>
                   {myOrders.map(order => (
-                    <tr key={order.id} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: '12px' }}>#{order.id}</td>
-                      <td>{new Date(order.created_at).toLocaleDateString('th-TH')}</td>
-                      <td>฿{order.total_price}</td>
-                      <td><span style={{ padding: '5px 12px', borderRadius: '15px', fontSize: '12px', background: order.status === 'จัดส่งแล้ว' ? '#55efc4' : '#ffeaa7' }}>{order.status}</span></td>
-                      <td>
-                        {order.status === 'รอดำเนินการ' && <button onClick={() => cancelOrder(order.id)} style={{ background: '#ff7675', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px', marginRight: '5px' }}>ยกเลิก</button>}
-                        <button onClick={() => { setCurrentOrderId(order.id); setShowPayModal(true); }} style={{ background: '#3498db', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px', marginRight: '5px' }}>💳 จ่ายเงิน</button>
-                        <button onClick={() => generatePDF(order)} style={{ background: '#27ae60', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px', marginRight: '5px' }}>📄 บิล</button>
-                        <button onClick={() => deleteOrderHistory(order.id)} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px' }}>🗑️ ลบ</button>
-                      </td>
-                    </tr>
+                    <div key={order.id} style={{ padding:'18px 20px', borderBottom:`1px solid ${C.border}` }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px', flexWrap:'wrap', gap:'8px' }}>
+                        <span style={{ fontWeight:'800', color:C.text, fontSize:'15px' }}>ออเดอร์ #{order.id}</span>
+                        <StatusBadge status={order.status} />
+                      </div>
+                      <div style={{ display:'flex', gap:'16px', marginBottom:'12px', fontSize:'13px', color:C.textSub, flexWrap:'wrap' }}>
+                        <span>📅 {new Date(order.created_at).toLocaleDateString('th-TH')}</span>
+                        <span style={{ fontWeight:'700', color:C.primary }}>฿{Number(order.total_price).toLocaleString()}</span>
+                      </div>
+                      <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+                        {order.status==='รอดำเนินการ' && (
+                          <button onClick={() => cancelOrder(order.id)} style={{ background:C.dangerLight, color:C.danger, border:`1.5px solid ${C.danger}`, padding:'7px 12px', borderRadius:'8px', cursor:'pointer', fontWeight:'600', fontSize:'12px', fontFamily:'inherit' }}>ยกเลิก</button>
+                        )}
+                        <button onClick={() => { setCurrentOrderId(order.id); setShowPayModal(true); }} style={{ background:C.infoLight, color:C.info, border:`1.5px solid ${C.info}`, padding:'7px 12px', borderRadius:'8px', cursor:'pointer', fontWeight:'600', fontSize:'12px', fontFamily:'inherit' }}>💳 จ่ายเงิน</button>
+                        <button onClick={() => generatePDF(order)} style={{ background:C.successLight, color:C.success, border:`1.5px solid ${C.success}`, padding:'7px 12px', borderRadius:'8px', cursor:'pointer', fontWeight:'600', fontSize:'12px', fontFamily:'inherit' }}>📄 บิล</button>
+                        <button onClick={() => deleteOrderHistory(order.id)} style={{ background:C.dangerLight, color:C.danger, border:`1.5px solid ${C.danger}`, padding:'7px 12px', borderRadius:'8px', cursor:'pointer', fontWeight:'600', fontSize:'12px', fontFamily:'inherit' }}>🗑️ ลบ</button>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            )}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      } />
+        } />
 
-      <Route path="/login" element={isLoggedIn ? (userRole === 'admin' ? <Navigate to="/admin" replace /> : <Navigate to="/" replace />) : (
-        <div style={{ padding: '50px', textAlign: 'center', minHeight: '80vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <div style={{ background: 'white', padding: '40px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', width: '100%', maxWidth: '400px' }}>
-            <h2 style={{ marginBottom: '20px' }}>🔐 เข้าสู่ระบบ</h2>
-            <form onSubmit={handleLogin}><div style={{ marginBottom: '15px', textAlign: 'left' }}><label>ชื่อผู้ใช้งาน:</label><input name="username" type="text" placeholder="Username" required style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '5px', border: '1px solid #ddd' }} /></div><div style={{ marginBottom: '25px', textAlign: 'left' }}><label>รหัสผ่าน:</label><input name="password" type="password" placeholder="Password" required style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '5px', border: '1px solid #ddd' }} /></div><button type="submit" style={{ width: '100%', padding: '12px', background: '#3498db', color: 'white', border: 'none', borderRadius: '5px' }}>Login</button></form>
-            <p style={{ marginTop: '20px' }}>ยังไม่มีบัญชี? <Link to="/register">สมัครสมาชิกฟรี</Link></p>
-          </div>
-        </div>
-      )} />
-
-      <Route path="/register" element={<div style={{ padding: '50px', textAlign: 'center', minHeight: '80vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}><div style={{ background: 'white', padding: '40px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', width: '100%', maxWidth: '400px' }}><h2 style={{ marginBottom: '20px', color: '#2ecc71' }}>📝 สมัครสมาชิกใหม่</h2><form onSubmit={handleRegister}><div style={{ marginBottom: '15px', textAlign: 'left' }}><label>ชื่อผู้ใช้งาน:</label><input name="username" placeholder="Username" required style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ddd' }} /></div><div style={{ marginBottom: '15px', textAlign: 'left' }}><label>รหัสผ่าน:</label><input name="password" type="password" placeholder="Password" required style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ddd' }} /></div><div style={{ marginBottom: '25px', textAlign: 'left' }}><label>ยืนยันรหัสผ่าน:</label><input name="confirmPassword" type="password" placeholder="Confirm Password" required style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ddd' }} /></div><button type="submit" style={{ width: '100%', padding: '12px', background: '#2ecc71', color: 'white', border: 'none', borderRadius: '5px' }}>สมัครสมาชิก</button></form><p style={{ marginTop: '20px' }}>มีบัญชีอยู่แล้ว? <Link to="/login">เข้าสู่ระบบที่นี่</Link></p></div></div>} />
-
-      <Route path="/admin" element={isLoggedIn && userRole === 'admin' ? (
-        <div style={{ padding: '30px' }}>
-          <div style={{ borderBottom: '2px solid #ccc', marginBottom: '20px', paddingBottom: '10px' }}><h1>ระบบจัดการหลังบ้าน (Admin)</h1></div>
-          {adminTab === 'report' && (
-            <div>
-              <div style={{ background: 'white', padding: '20px', borderRadius: '10px', marginBottom: '30px' }}><h3 style={{ marginTop: 0 }}>📈 สถิติยอดขาย</h3><div style={{ width: '100%', height: 300 }}><ResponsiveContainer><BarChart data={Object.values(orders.reduce((acc, order) => { if (order.status !== 'ยกเลิก' && order.status !== 'รอดำเนินการ') { const date = new Date(order.created_at).toLocaleDateString('th-TH'); if (!acc[date]) acc[date] = { name: date, ยอดขาย: 0 }; acc[date].ยอดขาย += Number(order.total_price); } return acc; }, {}))}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Legend /><Bar dataKey="ยอดขาย" fill="#3498db" /></BarChart></ResponsiveContainer></div></div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
-                <div style={{ background: '#2ecc71', color: 'white', padding: '20px', borderRadius: '15px' }}><p>💰 ยอดขาย</p><h2>฿{totalSales.toLocaleString()}</h2></div>
-                <div style={{ background: '#f1c40f', color: 'white', padding: '20px', borderRadius: '15px' }}><p>⏳ รอตรวจสอบ</p><h2>{pendingOrders}</h2></div>
-                <div style={{ background: '#3498db', color: 'white', padding: '20px', borderRadius: '15px' }}><p>✅ ส่งแล้ว</p><h2>{completedOrders}</h2></div>
-                <div style={{ background: '#9b59b6', color: 'white', padding: '20px', borderRadius: '15px' }}><p>👤 ลูกค้า</p><h2>{totalUsers}</h2></div>
+        {/* =================================================
+            🔐 หน้า Login (โครงสร้างเดิม)
+            ================================================= */}
+        <Route path="/login" element={
+          isLoggedIn ? (userRole==='admin' ? <Navigate to="/admin" replace /> : <Navigate to="/" replace />) : (
+            <div style={{ minHeight:'100vh', display:'flex', justifyContent:'center', alignItems:'center', padding:'40px 20px', background:`linear-gradient(135deg, ${C.primary}22, ${C.bg})` }}>
+              <div style={{ background:C.surface, padding:'clamp(24px,5vw,40px)', borderRadius:'20px', boxShadow:'0 20px 60px rgba(99,102,241,0.12)', width:'100%', maxWidth:'400px', border:`1px solid ${C.border}`, animation:'fadeUp 0.3s ease' }}>
+                <h2 style={{ marginBottom:'6px', fontSize:'24px', fontWeight:'900', color:C.text }}>🔐 เข้าสู่ระบบ</h2>
+                <p style={{ color:C.textSub, fontSize:'14px', margin:'0 0 24px' }}>ยินดีต้อนรับกลับมา 👋</p>
+                <form onSubmit={handleLogin} style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
+                  <div>
+                    <label style={{ display:'block', fontSize:'12px', fontWeight:'700', color:C.textSub, marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.5px' }}>ชื่อผู้ใช้งาน</label>
+                    <input name="username" type="text" placeholder="Username" required style={{ ...inp, width:'100%', padding:'11px 14px' }} />
+                  </div>
+                  <div>
+                    <label style={{ display:'block', fontSize:'12px', fontWeight:'700', color:C.textSub, marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.5px' }}>รหัสผ่าน</label>
+                    <input name="password" type="password" placeholder="Password" required style={{ ...inp, width:'100%', padding:'11px 14px' }} />
+                  </div>
+                  <button type="submit" style={{ background:`linear-gradient(135deg,${C.primary},${C.primaryDark})`, color:'white', border:'none', padding:'13px', borderRadius:'12px', cursor:'pointer', fontWeight:'700', fontSize:'15px', fontFamily:'inherit', marginTop:'4px' }}>เข้าสู่ระบบ</button>
+                </form>
+                <p style={{ marginTop:'18px', textAlign:'center', fontSize:'14px', color:C.textSub }}>
+                  ยังไม่มีบัญชี? <Link to="/register" style={{ color:C.primary, fontWeight:'700', textDecoration:'none' }}>สมัครสมาชิกฟรี</Link>
+                </p>
               </div>
             </div>
-          )}
-          {adminTab === 'add' && (
-            <div style={{ background: 'white', padding: '20px', borderRadius: '10px' }}>
-              <h3>➕ {editingProduct ? 'แก้ไขสินค้า' : 'เพิ่มสินค้า'}</h3>
-              <form onSubmit={addOrUpdateProduct} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}><input name="name" placeholder="ชื่อ" defaultValue={editingProduct?.name || ''} required style={{ padding: '8px' }} /><input name="category" placeholder="หมวดหมู่" defaultValue={editingProduct?.category || ''} required style={{ padding: '8px' }} /><input name="stock" type="number" placeholder="สต็อก" defaultValue={editingProduct?.stock || 0} required style={{ padding: '8px' }} /><input name="price" type="number" placeholder="ราคา" defaultValue={editingProduct?.price || ''} required style={{ padding: '8px' }} /><input name="image" type="file" onChange={(e) => setFile(e.target.files[0])} accept="image/*" style={{ padding: '8px' }} /><input name="desc" placeholder="รายละเอียด" defaultValue={editingProduct?.description || ''} style={{ flex: 1, padding: '8px' }} /><button type="submit" style={{ background: '#2ecc71', color: 'white', border: 'none', padding: '8px 20px' }}>บันทึก</button></form>
+          )
+        } />
+
+        {/* =================================================
+            📝 หน้า Register (โครงสร้างเดิม)
+            ================================================= */}
+        <Route path="/register" element={
+          <div style={{ minHeight:'100vh', display:'flex', justifyContent:'center', alignItems:'center', padding:'40px 20px', background:`linear-gradient(135deg, ${C.success}22, ${C.bg})` }}>
+            <div style={{ background:C.surface, padding:'clamp(24px,5vw,40px)', borderRadius:'20px', boxShadow:'0 20px 60px rgba(16,185,129,0.10)', width:'100%', maxWidth:'400px', border:`1px solid ${C.border}` }}>
+              <h2 style={{ marginBottom:'6px', fontSize:'24px', fontWeight:'900', color:C.text }}>📝 สมัครสมาชิกใหม่</h2>
+              <p style={{ color:C.textSub, fontSize:'14px', margin:'0 0 24px' }}>สร้างบัญชีใหม่ฟรีวันนี้ ✨</p>
+              <form onSubmit={handleRegister} style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
+                {[
+                  { name:'username', label:'ชื่อผู้ใช้งาน', type:'text', placeholder:'Username' },
+                  { name:'password', label:'รหัสผ่าน', type:'password', placeholder:'Password' },
+                  { name:'confirmPassword', label:'ยืนยันรหัสผ่าน', type:'password', placeholder:'Confirm Password' },
+                ].map(f => (
+                  <div key={f.name}>
+                    <label style={{ display:'block', fontSize:'12px', fontWeight:'700', color:C.textSub, marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.5px' }}>{f.label}</label>
+                    <input name={f.name} type={f.type} placeholder={f.placeholder} required style={{ ...inp, width:'100%', padding:'11px 14px' }} />
+                  </div>
+                ))}
+                <button type="submit" style={{ background:`linear-gradient(135deg,${C.success},#059669)`, color:'white', border:'none', padding:'13px', borderRadius:'12px', cursor:'pointer', fontWeight:'700', fontSize:'15px', fontFamily:'inherit', marginTop:'4px' }}>สมัครสมาชิก</button>
+              </form>
+              <p style={{ marginTop:'18px', textAlign:'center', fontSize:'14px', color:C.textSub }}>
+                มีบัญชีอยู่แล้ว? <Link to="/login" style={{ color:C.primary, fontWeight:'700', textDecoration:'none' }}>เข้าสู่ระบบที่นี่</Link>
+              </p>
             </div>
-          )}
-          {adminTab === 'stock' && (
-            <div>
-              <h3>📦 จัดการสต็อก</h3>
-              <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white' }}>
-                <thead><tr style={{ background: '#34495e', color: 'white' }}><th style={{ padding: '12px' }}>สินค้า</th><th>ราคา</th><th>จัดการ</th></tr></thead>
-                <tbody>
-                  {products.map(p => (
-                    <tr key={p.id} style={{ textAlign: 'center', borderBottom: '1px solid #eee' }}>
-                      {/* 🟢 [แก้ไข]: เปลี่ยนรูปจิ๋วในหน้าแอดมินให้ดึงจาก Cloud URL (p.image) */}
-                      <td style={{ padding: '10px' }}>{p.image && <img src={p.image} alt={p.name} style={{ width: '40px', height: '40px', objectFit: 'cover', marginRight: '10px' }} />}{p.name}</td>
-                      <td>฿{p.price}</td>
-                      <td><button onClick={() => { selectToEdit(p); setAdminTab('add'); }} style={{ background: '#f1c40f', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px' }}>แก้ไข</button><button onClick={() => deleteProduct(p.id)} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', marginLeft: '5px' }}>ลบ</button></td>
-                    </tr>
+          </div>
+        } />
+
+        {/* =================================================
+            ⚙️ หน้า Admin — 5 แท็บ (โครงสร้างเดิม ตกแต่งใหม่)
+            ================================================= */}
+        <Route path="/admin" element={isLoggedIn && userRole==='admin' ? (
+          <div style={{ padding:'clamp(16px,4vw,30px)', maxWidth:'1300px', margin:'0 auto' }}>
+
+            {/* Header Admin */}
+            <div style={{ marginBottom:'24px', borderBottom:`2px solid ${C.border}`, paddingBottom:'16px' }}>
+              <h1 style={{ margin:0, fontSize:'22px', fontWeight:'900', color:C.text }}>⚙️ ระบบจัดการหลังบ้าน</h1>
+              <p style={{ margin:'4px 0 0', color:C.textSub, fontSize:'13px' }}>
+                {adminTab==='report' ? '📊 รายงานสถิติ' : adminTab==='add' ? '➕ เพิ่มสินค้า' : adminTab==='stock' ? '📦 จัดการสต็อก' : adminTab==='orders' ? '🧾 รายการสั่งซื้อ' : '👥 จัดการผู้ใช้'}
+              </p>
+            </div>
+
+            {/* ===========================
+                แท็บ 1: 📊 รายงานสถิติ
+                =========================== */}
+            {adminTab==='report' && (
+              <div>
+                {/* กราฟ */}
+                <div style={{ background:C.surface, padding:'20px', borderRadius:'16px', marginBottom:'24px', boxShadow:'0 2px 8px rgba(0,0,0,0.05)', border:`1px solid ${C.border}` }}>
+                  <h3 style={{ margin:'0 0 20px', color:C.text, fontSize:'16px', fontWeight:'700' }}>📈 สถิติยอดขายรายวัน</h3>
+                  <div style={{ width:'100%', height:280 }}>
+                    <ResponsiveContainer>
+                      <BarChart data={Object.values(orders.reduce((acc, order) => {
+                        if (order.status!=='ยกเลิก'&&order.status!=='รอดำเนินการ') {
+                          const date = new Date(order.created_at).toLocaleDateString('th-TH');
+                          if (!acc[date]) acc[date] = { name:date, ยอดขาย:0 };
+                          acc[date].ยอดขาย += Number(order.total_price);
+                        }
+                        return acc;
+                      }, {}))} margin={{ top:5, right:20, left:10, bottom:5 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={C.border} />
+                        <XAxis dataKey="name" tick={{ fontSize:12 }} />
+                        <YAxis tick={{ fontSize:12 }} />
+                        <Tooltip cursor={{ fill:C.primaryLight }} />
+                        <Legend />
+                        <Bar dataKey="ยอดขาย" fill={C.primary} radius={[6,6,0,0]} barSize={40} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* การ์ดสถิติ 4 ใบ */}
+                <div className="admin-stats" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(190px, 1fr))', gap:'16px' }}>
+                  {[
+                    { label:'ยอดขายทั้งหมด',     value:`฿${totalSales.toLocaleString()}`,   icon:'💰', bg:'linear-gradient(135deg,#10b981,#059669)' },
+                    { label:'ออเดอร์รอตรวจสอบ',  value:`${pendingOrders} รายการ`,          icon:'⏳', bg:'linear-gradient(135deg,#f59e0b,#d97706)' },
+                    { label:'จัดส่งสำเร็จ',       value:`${completedOrders} รายการ`,        icon:'✅', bg:'linear-gradient(135deg,#3b82f6,#2563eb)' },
+                    { label:'ลูกค้าทั้งหมด',     value:`${totalUsers} คน`,                 icon:'👥', bg:'linear-gradient(135deg,#8b5cf6,#7c3aed)' },
+                  ].map(s => (
+                    <div key={s.label} style={{ background:s.bg, color:'white', padding:'20px', borderRadius:'16px', boxShadow:'0 4px 16px rgba(0,0,0,0.12)' }}>
+                      <p style={{ margin:'0 0 8px', fontSize:'13px', opacity:0.85 }}>{s.icon} {s.label}</p>
+                      <h2 style={{ margin:0, fontSize:'24px', fontWeight:'900' }}>{s.value}</h2>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {adminTab === 'orders' && (
-  <div>
-    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
-      <h3>🧾 รายการสั่งซื้อ</h3>
-      <div>
-        <button onClick={exportToExcel} style={{ background: '#27ae60', color: 'white', border: 'none', padding: '10px' }}>📊 Excel</button>
-        <button onClick={exportToPDF} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '10px', marginLeft: '5px' }}>📄 PDF</button>
-      </div>
-    </div>
-    <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white' }}>
-      <thead>
-        <tr style={{ background: '#2c3e50', color: 'white' }}>
-          <th style={{ padding: '12px' }}>ออเดอร์</th>
-          {/* 🟢 [เพิ่ม]: หัวข้อคอลัมน์ใหม่ */}
-          <th>ที่อยู่จัดส่ง</th>
-          <th>ราคารวม</th>
-          <th>หลักฐาน</th>
-          <th>สถานะ</th>
-          <th>พิมพ์</th>
-        </tr>
-      </thead>
-      <tbody>
-        {orders.map(order => (
-          <tr key={order.id} style={{ textAlign: 'center', borderBottom: '1px solid #eee' }}>
-            <td style={{ padding: '12px' }}>#{order.id}</td>
-            
-            {/* 🟢 [เพิ่ม]: คอลัมน์แสดงที่อยู่และเบอร์โทรแยกออกมา */}
-            <td style={{ padding: '10px', fontSize: '13px', textAlign: 'left', maxWidth: '250px' }}>
-              <div style={{ color: '#2c3e50', fontWeight: '500' }}>📍 {order.address}</div>
-              <div style={{ color: '#7f8c8d', fontSize: '12px' }}>📞 {order.phone}</div>
-            </td>
-
-            <td>฿{order.total_price}</td>
-            <td>
-              {order.slip_image ? <button onClick={() => window.open(order.slip_image, '_blank')} style={{ background: '#9b59b6', color: 'white', border: 'none', padding: '5px' }}>🖼️ ดูสลิป</button> : <span style={{ color: '#999' }}>ยังไม่ส่ง</span>}
-            </td>
-            <td>
-              <select value={order.status} onChange={(e) => updateOrderStatus(order.id, e.target.value)} style={{ padding: '5px', borderRadius: '15px', background: order.status === 'จัดส่งแล้ว' ? '#55efc4' : '#ffeaa7' }}>
-                <option value="รอดำเนินการ">รอดำเนินการ</option>
-                <option value="ชำระเงินแล้ว">ชำระเงินแล้ว</option>
-                <option value="กำลังจัดส่ง">กำลังจัดส่ง</option>
-                <option value="จัดส่งแล้ว">จัดส่งแล้ว</option>
-                <option value="ยกเลิก">ยกเลิก</option>
-              </select>
-            </td>
-            <td><button onClick={() => generatePDF(order)} style={{ background: '#34495e', color: 'white', border: 'none', padding: '5px' }}>🖨️ บิล</button></td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-)}
-
-{adminTab === 'users' && (
-  <div style={{ animation: 'fadeIn 0.3s ease-in-out' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-      <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-        👥 จัดการผู้ใช้ <span style={{ fontSize: '14px', fontWeight: 'normal', color: '#7f8c8d' }}>({users.length} บัญชี)</span>
-      </h3>
-      {/* ปุ่มรีเฟรชฉุกเฉินเผื่อข้อมูลค้าง */}
-      <button onClick={fetchUsers} style={{ background: '#f1f2f6', border: 'none', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer', fontSize: '12px' }}>🔄 รีเฟรชข้อมูล</button>
-    </div>
-    
-    <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-      <thead>
-        <tr style={{ background: '#2c3e50', color: 'white', textAlign: 'center' }}>
-          <th style={{ padding: '15px' }}>ID</th>
-          <th style={{ textAlign: 'left' }}>ข้อมูลผู้ใช้งาน</th>
-          <th>ระดับสิทธิ์</th>
-          <th>สถานะ</th>
-          <th>การจัดการ</th>
-        </tr>
-      </thead>
-      <tbody>
-        {users && users.length > 0 ? (
-          users.map((user, index) => (
-            <tr 
-              key={user.id || index} 
-              style={{ 
-                textAlign: 'center', 
-                borderBottom: '1px solid #f1f2f6',
-                backgroundColor: index % 2 === 0 ? '#ffffff' : '#f9f9f9',
-                transition: '0.2s'
-              }}
-            >
-              <td style={{ padding: '12px', color: '#7f8c8d' }}>{user.id}</td>
-              <td style={{ textAlign: 'left', padding: '12px' }}>
-                {/* 🟢 [แก้ไข]: ป้องกันชื่อหายโดยใช้ค่าสำรองถ้า username เป็น null */}
-                <div style={{ fontWeight: 'bold', color: '#2c3e50' }}>
-                  {user.username || "กำลังโหลด..."} 
                 </div>
-                <div style={{ fontSize: '12px', color: '#95a5a6' }}>
-                  {user.email || "---"}
+              </div>
+            )}
+
+            {/* ===========================
+                แท็บ 2: ➕ เพิ่มสินค้า
+                =========================== */}
+            {adminTab==='add' && (
+              <div style={{ background:C.surface, padding:'clamp(16px,4vw,24px)', borderRadius:'16px', border:`1px solid ${C.border}`, maxWidth:'700px' }}>
+                <h3 style={{ margin:'0 0 20px', color:C.text, fontSize:'17px', fontWeight:'700' }}>{editingProduct ? '✏️ แก้ไขสินค้า' : '➕ เพิ่มสินค้าใหม่'}</h3>
+                <form onSubmit={addOrUpdateProduct} style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
+                  <div className="admin-form-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                    <div>
+                      <label style={{ fontSize:'12px', fontWeight:'700', color:C.textSub, textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:'5px' }}>ชื่อสินค้า *</label>
+                      <input name="name" placeholder="ชื่อสินค้า" defaultValue={editingProduct?.name||''} required style={{ ...inp, width:'100%' }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize:'12px', fontWeight:'700', color:C.textSub, textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:'5px' }}>หมวดหมู่ *</label>
+                      <input name="category" placeholder="หมวดหมู่" defaultValue={editingProduct?.category||''} required style={{ ...inp, width:'100%' }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize:'12px', fontWeight:'700', color:C.textSub, textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:'5px' }}>สต็อก *</label>
+                      <input name="stock" type="number" placeholder="จำนวนสต็อก" defaultValue={editingProduct?.stock||0} required style={{ ...inp, width:'100%' }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize:'12px', fontWeight:'700', color:C.textSub, textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:'5px' }}>ราคา (฿) *</label>
+                      <input name="price" type="number" placeholder="ราคา" defaultValue={editingProduct?.price||''} required style={{ ...inp, width:'100%' }} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ fontSize:'12px', fontWeight:'700', color:C.textSub, textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:'5px' }}>รูปสินค้า</label>
+                    <input name="image" type="file" onChange={(e) => setFile(e.target.files[0])} accept="image/*" style={{ ...inp, width:'100%', cursor:'pointer', padding:'8px' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:'12px', fontWeight:'700', color:C.textSub, textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:'5px' }}>รายละเอียด</label>
+                    <input name="desc" placeholder="รายละเอียดสินค้า" defaultValue={editingProduct?.description||''} style={{ ...inp, width:'100%' }} />
+                  </div>
+                  <div style={{ display:'flex', gap:'10px' }}>
+                    <button type="submit" style={{ flex:1, padding:'12px', background:editingProduct ? `linear-gradient(135deg,${C.warning},#d97706)` : `linear-gradient(135deg,${C.success},#059669)`, color:'white', border:'none', borderRadius:'10px', cursor:'pointer', fontWeight:'700', fontSize:'14px', fontFamily:'inherit' }}>
+                      {editingProduct ? '💾 ยืนยันการแก้ไข' : '➕ บันทึกสินค้า'}
+                    </button>
+                    {editingProduct && <button type="button" onClick={() => setEditingProduct(null)} style={{ padding:'12px 20px', background:C.bg, color:C.textSub, border:`1.5px solid ${C.border}`, borderRadius:'10px', cursor:'pointer', fontWeight:'600', fontFamily:'inherit' }}>ยกเลิก</button>}
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* ===========================
+                แท็บ 3: 📦 จัดการสต็อก
+                =========================== */}
+            {adminTab==='stock' && (
+              <div>
+                <h3 style={{ margin:'0 0 16px', color:C.text, fontSize:'17px', fontWeight:'700' }}>📦 จัดการสต็อกสินค้า ({products.length} รายการ)</h3>
+                <div style={{ background:C.surface, borderRadius:'16px', border:`1px solid ${C.border}`, overflow:'hidden' }}>
+                  <div style={{ overflowX:'auto' }}>
+                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'14px' }}>
+                      <thead>
+                        <tr style={{ background:C.bg }}>
+                          {['สินค้า','ราคา','สต็อก','จัดการ'].map(h => (
+                            <th key={h} style={{ padding:'12px 16px', textAlign:h==='สินค้า'?'left':'center', color:C.textSub, fontWeight:'600', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.5px' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {products.map((p, i) => (
+                          <tr key={p.id} style={{ borderTop:`1px solid ${C.border}`, background:i%2===0?C.surface:C.bg }}>
+                            <td style={{ padding:'12px 16px' }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                                {p.image ? <img src={p.image} alt={p.name} style={{ width:'40px', height:'40px', objectFit:'cover', borderRadius:'8px' }} />
+                                         : <div style={{ width:'40px', height:'40px', borderRadius:'8px', background:C.bg, display:'flex', alignItems:'center', justifyContent:'center' }}>📦</div>}
+                                <span style={{ fontWeight:'600', color:C.text }}>{p.name}</span>
+                              </div>
+                            </td>
+                            <td style={{ textAlign:'center', fontWeight:'700', color:C.danger }}>฿{Number(p.price).toLocaleString()}</td>
+                            <td style={{ textAlign:'center' }}>
+                              <span style={{ background:p.stock>0?C.successLight:C.dangerLight, color:p.stock>0?C.success:C.danger, padding:'3px 10px', borderRadius:'999px', fontSize:'12px', fontWeight:'700' }}>
+                                {p.stock>0 ? `${p.stock} ชิ้น` : 'หมด'}
+                              </span>
+                            </td>
+                            <td style={{ textAlign:'center', padding:'12px 16px' }}>
+                              <button onClick={() => { selectToEdit(p); setAdminTab('add'); }} style={{ background:C.warningLight, color:C.warning, border:`1.5px solid ${C.warning}`, padding:'5px 12px', borderRadius:'6px', cursor:'pointer', fontWeight:'600', fontSize:'12px', marginRight:'6px', fontFamily:'inherit' }}>✏️ แก้ไข</button>
+                              <button onClick={() => deleteProduct(p.id)} style={{ background:C.dangerLight, color:C.danger, border:`1.5px solid ${C.danger}`, padding:'5px 12px', borderRadius:'6px', cursor:'pointer', fontWeight:'600', fontSize:'12px', fontFamily:'inherit' }}>🗑️ ลบ</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </td>
-              <td>
-                <select 
-                  value={user.role || 'customer'} 
-                  onChange={(e) => {
-                    const newRole = e.target.value;
-                    // ส่งข้อมูลไปอัปเดต โดยยังคงรักษาข้อมูลเดิมในบรรทัดนั้นไว้
-                    updateUser(user.id, { role: newRole, status: user.status });
-                  }}
-                  style={{ 
-                    padding: '6px 10px', 
-                    borderRadius: '6px', 
-                    border: '1px solid #dcdde1',
-                    backgroundColor: user.role === 'admin' ? '#fff4e6' : 'white',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <option value="customer">👤 Customer</option>
-                  <option value="admin">🔑 Admin</option>
-                </select>
-              </td>
-              <td>
-                <span style={{ 
-                  padding: '5px 12px', 
-                  borderRadius: '20px', 
-                  fontSize: '11px',
-                  fontWeight: 'bold',
-                  background: user.status === 'suspended' ? '#ffeaa7' : '#d1fae5',
-                  color: user.status === 'suspended' ? '#d63031' : '#10b981',
-                  border: `1px solid ${user.status === 'suspended' ? '#fab1a0' : '#a7f3d0'}`
-                }}>
-                  {user.status === 'suspended' ? 'ถูกระงับ' : 'ใช้งานปกติ'}
-                </span>
-              </td>
-              <td>
-                <button 
-                  onClick={() => {
-                    const newStatus = user.status === 'active' ? 'suspended' : 'active';
-                    if (window.confirm(`คุณแน่ใจหรือไม่ที่จะ ${newStatus === 'suspended' ? 'ระงับ' : 'ปลดระงับ'} บัญชี ${user.username || ''}?`)) {
-                      updateUser(user.id, { role: user.role, status: newStatus });
-                    }
-                  }}
-                  style={{ 
-                    background: user.status === 'active' ? '#ff7675' : '#55efc4',
-                    color: 'white', 
-                    border: 'none', 
-                    padding: '7px 14px', 
-                    borderRadius: '6px', 
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    fontWeight: 'bold'
-                  }}
-                >
-                  {user.status === 'active' ? '🚫 ระงับ' : '✅ ปลดระงับ'}
-                </button>
-              </td>
-            </tr>
-          ))
-        ) : (
-          <tr><td colSpan="5" style={{ padding: '20px', color: '#999' }}>ไม่พบข้อมูลผู้ใช้งาน</td></tr>
-        )}
-      </tbody>
-    </table>
-  </div>
-)}
-        </div>
-      ) : <Navigate to="/login" replace />} />
-    </Routes>
-  </div>
+              </div>
+            )}
+
+            {/* ===========================
+                แท็บ 4: 🧾 รายการสั่งซื้อ
+                =========================== */}
+            {adminTab==='orders' && (
+              <div>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px', flexWrap:'wrap', gap:'10px' }}>
+                  <h3 style={{ margin:0, color:C.text, fontSize:'17px', fontWeight:'700' }}>🧾 รายการสั่งซื้อทั้งหมด</h3>
+                  <div style={{ display:'flex', gap:'8px' }}>
+                    <button onClick={exportToExcel} style={{ background:C.successLight, color:C.success, border:`1.5px solid ${C.success}`, padding:'8px 14px', borderRadius:'8px', cursor:'pointer', fontWeight:'700', fontSize:'13px', display:'flex', alignItems:'center', gap:'6px', fontFamily:'inherit' }}>📊 Excel</button>
+                    <button onClick={exportToPDF} style={{ background:C.dangerLight, color:C.danger, border:`1.5px solid ${C.danger}`, padding:'8px 14px', borderRadius:'8px', cursor:'pointer', fontWeight:'700', fontSize:'13px', display:'flex', alignItems:'center', gap:'6px', fontFamily:'inherit' }}>📄 PDF</button>
+                  </div>
+                </div>
+                <div style={{ background:C.surface, borderRadius:'16px', border:`1px solid ${C.border}`, overflow:'hidden' }}>
+                  <div style={{ overflowX:'auto' }}>
+                    <table className="orders-table" style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+                      <thead>
+                        <tr style={{ background:C.bg }}>
+                          {['ออเดอร์','ที่อยู่จัดส่ง','ราคารวม','หลักฐาน','สถานะ','พิมพ์'].map(h => (
+                            <th key={h} style={{ padding:'12px 10px', textAlign:'center', color:C.textSub, fontWeight:'600', fontSize:'11px', textTransform:'uppercase', whiteSpace:'nowrap', letterSpacing:'0.5px' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {orders.map((order, i) => (
+                          <tr key={order.id} style={{ borderTop:`1px solid ${C.border}`, textAlign:'center', background:i%2===0?C.surface:C.bg }}>
+                            <td style={{ padding:'12px 10px', fontWeight:'700', color:C.text }}>#{order.id}</td>
+                            {/* คอลัมน์ที่อยู่จัดส่ง — โครงสร้างเดิม */}
+                            <td style={{ padding:'10px', fontSize:'12px', textAlign:'left', maxWidth:'220px' }}>
+                              <div style={{ color:C.text, fontWeight:'500', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>📍 {order.address || '—'}</div>
+                              <div style={{ color:C.textMuted, fontSize:'11px' }}>📞 {order.phone || '—'}</div>
+                            </td>
+                            <td style={{ fontWeight:'700', color:C.danger }}>฿{Number(order.total_price).toLocaleString()}</td>
+                            <td>
+                              {order.slip_image
+                                ? <button onClick={() => window.open(order.slip_image,'_blank')} style={{ background:'#f3e8ff', color:'#7c3aed', border:'1.5px solid #7c3aed', padding:'4px 10px', borderRadius:'6px', cursor:'pointer', fontSize:'11px', fontWeight:'600', fontFamily:'inherit' }}>🖼️ ดูสลิป</button>
+                                : <span style={{ color:C.textMuted, fontSize:'11px' }}>ยังไม่ส่ง</span>}
+                            </td>
+                            <td>
+                              {/* Dropdown เปลี่ยนสถานะออเดอร์ — สีพื้นเปลี่ยนตามสถานะ */}
+                              <select value={order.status} onChange={(e) => updateOrderStatus(order.id, e.target.value)} style={{
+                                padding:'5px 8px', borderRadius:'999px', fontSize:'11px', fontWeight:'700',
+                                background: order.status==='จัดส่งแล้ว' ? C.successLight : order.status==='ชำระเงินแล้ว' ? C.infoLight : C.warningLight,
+                                border:`1px solid ${C.border}`, cursor:'pointer', fontFamily:'inherit',
+                              }}>
+                                <option value="รอดำเนินการ">รอดำเนินการ</option>
+                                <option value="ชำระเงินแล้ว">ชำระเงินแล้ว</option>
+                                <option value="กำลังจัดส่ง">กำลังจัดส่ง</option>
+                                <option value="จัดส่งแล้ว">จัดส่งแล้ว</option>
+                                <option value="ยกเลิก">ยกเลิก</option>
+                              </select>
+                            </td>
+                            <td>
+                              <button onClick={() => generatePDF(order)} style={{ background:C.bg, color:C.text, border:`1.5px solid ${C.border}`, padding:'4px 10px', borderRadius:'6px', cursor:'pointer', fontSize:'11px', fontWeight:'600', fontFamily:'inherit' }}>🖨️ บิล</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ===========================
+                แท็บ 5: 👥 จัดการผู้ใช้ (โครงสร้างเดิม ตกแต่งใหม่)
+                =========================== */}
+            {adminTab==='users' && (
+              <div>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px', flexWrap:'wrap', gap:'10px' }}>
+                  <h3 style={{ margin:0, color:C.text, fontSize:'17px', fontWeight:'700', display:'flex', alignItems:'center', gap:'10px' }}>
+                    👥 จัดการผู้ใช้
+                    <span style={{ fontSize:'13px', fontWeight:'normal', color:C.textMuted }}>({users.length} บัญชี)</span>
+                  </h3>
+                  <button onClick={fetchUsers} style={{ background:C.primaryLight, color:C.primary, border:`1.5px solid ${C.primary}`, padding:'8px 14px', borderRadius:'8px', cursor:'pointer', fontWeight:'600', fontSize:'13px', fontFamily:'inherit' }}>🔄 รีเฟรชข้อมูล</button>
+                </div>
+                <div style={{ background:C.surface, borderRadius:'16px', border:`1px solid ${C.border}`, overflow:'hidden' }}>
+                  <div style={{ overflowX:'auto' }}>
+                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+                      <thead>
+                        <tr style={{ background:C.bg }}>
+                          {['ID','ข้อมูลผู้ใช้','ระดับสิทธิ์','สถานะ','การจัดการ'].map(h => (
+                            <th key={h} style={{ padding:'12px 14px', textAlign:h==='ข้อมูลผู้ใช้'?'left':'center', color:C.textSub, fontWeight:'600', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.5px' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {users && users.length>0 ? users.map((user, index) => (
+                          <tr key={user.id||index} style={{ borderTop:`1px solid ${C.border}`, backgroundColor:index%2===0?C.surface:C.bg }}>
+                            <td style={{ padding:'12px 14px', textAlign:'center', color:C.textMuted }}>{user.id}</td>
+                            <td style={{ padding:'12px 14px', textAlign:'left' }}>
+                              <div style={{ fontWeight:'700', color:C.text }}>{user.username||"กำลังโหลด..."}</div>
+                              <div style={{ fontSize:'12px', color:C.textMuted }}>{user.email||"---"}</div>
+                            </td>
+                            <td style={{ textAlign:'center' }}>
+                              <select value={user.role||'customer'} onChange={(e) => updateUser(user.id,{ role:e.target.value, status:user.status })} style={{
+                                padding:'6px 10px', borderRadius:'6px', border:`1.5px solid ${C.border}`,
+                                backgroundColor:user.role==='admin' ? '#fff4e6' : C.surface, cursor:'pointer', fontFamily:'inherit', fontSize:'13px',
+                              }}>
+                                <option value="customer">👤 Customer</option>
+                                <option value="admin">🔑 Admin</option>
+                              </select>
+                            </td>
+                            <td style={{ textAlign:'center' }}>
+                              <span style={{
+                                padding:'4px 10px', borderRadius:'999px', fontSize:'11px', fontWeight:'700',
+                                background:user.status==='suspended' ? C.warningLight : C.successLight,
+                                color:user.status==='suspended' ? C.warning : C.success,
+                              }}>
+                                {user.status==='suspended' ? '🚫 ถูกระงับ' : '✅ ปกติ'}
+                              </span>
+                            </td>
+                            <td style={{ textAlign:'center', padding:'12px 14px' }}>
+                              <button onClick={() => {
+                                const newStatus = user.status==='active' ? 'suspended' : 'active';
+                                if (window.confirm(`${newStatus==='suspended'?'ระงับ':'ปลดระงับ'} บัญชี ${user.username||''}?`)) updateUser(user.id,{ role:user.role, status:newStatus });
+                              }} style={{
+                                background:user.status==='active' ? C.dangerLight : C.successLight,
+                                color:user.status==='active' ? C.danger : C.success,
+                                border:`1.5px solid ${user.status==='active' ? C.danger : C.success}`,
+                                padding:'6px 14px', borderRadius:'8px', cursor:'pointer', fontSize:'12px', fontWeight:'600', fontFamily:'inherit',
+                              }}>
+                                {user.status==='active' ? '🚫 ระงับ' : '✅ ปลดระงับ'}
+                              </button>
+                            </td>
+                          </tr>
+                        )) : (
+                          <tr><td colSpan="5" style={{ padding:'40px', textAlign:'center', color:C.textMuted }}>ไม่พบข้อมูลผู้ใช้งาน</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </div>
+        ) : <Navigate to="/login" replace />} />
+
+      </Routes>
+    </div>
   );
 }
 
