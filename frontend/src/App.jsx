@@ -475,40 +475,25 @@ const fetchUsers = async () => {
   }
 };
 
-// 2. ฟังก์ชันอัปเดตข้อมูล (แก้ไขให้ส่งข้อมูลถูกต้อง)
+// 2. ฟังก์ชันอัปเดตข้อมูล (ฉบับเสถียรที่สุด กันชื่อหาย 100%)
+// ในหน้า Admin.jsx (หรือไฟล์ที่คุณทำหน้าจัดการผู้ใช้)
 const updateUser = async (id, data) => {
   try {
-    // ใส่ Loading หรือปิดการกดปุ่มชั่วคราวเพื่อป้องกันกดซ้ำ (ถ้าต้องการ)
-    const response = await axios.put(`https://shop-system-backend.onrender.com/api/users/${id}`, data, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`
-      }
+    // 🟢 เปลี่ยนมายิงที่เส้นทางพิเศษที่เราเพิ่งสร้าง
+    const response = await axios.put(`https://shop-system-backend.onrender.com/api/special-admin-update/${id}`, data, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
     });
 
     if (response.status === 200) {
-      // ✅ ใช้ fetchUsers() เพื่อดึงข้อมูลใหม่ทั้งหมดที่ถูกต้องจากฐานข้อมูล
+      // ไม่ต้องทำ Optimistic Update ใดๆ ทั้งสิ้น สั่งโหลดใหม่จาก DB เลย
       await fetchUsers(); 
-      alert('✅ อัปเดตข้อมูลผู้ใช้สำเร็จ');
+      alert("✅ อัปเดตสำเร็จ! คราวนี้ชื่อห้ามหาย");
     }
   } catch (error) {
-    console.error('Error updating user:', error);
-    // ถ้า error เพราะ token หมดอายุ หรือไม่มีสิทธิ์
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      alert('❌ คุณไม่มีสิทธิ์ทำรายการนี้ หรือเซสชันหมดอายุ');
-    } else {
-      alert('❌ เกิดข้อผิดพลาด: ' + (error.response?.data?.message || 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้'));
-    }
-    // ดึงข้อมูลกลับมาใหม่เพื่อคืนค่าเดิมใน UI
-    fetchUsers();
+    console.error("Update Error:", error);
+    alert("❌ ยิงไม่ติด: " + error.message);
   }
 };
-
-// 3. เรียกใช้ตอนเปิดหน้าเว็บ
-useEffect(() => {
-  if (adminTab === 'users') {
-    fetchUsers();
-  }
-}, [adminTab]);
 
   const addOrUpdateProduct = (e) => {
     e.preventDefault();
@@ -808,6 +793,8 @@ useEffect(() => {
       <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
         👥 จัดการผู้ใช้ <span style={{ fontSize: '14px', fontWeight: 'normal', color: '#7f8c8d' }}>({users.length} บัญชี)</span>
       </h3>
+      {/* ปุ่มรีเฟรชฉุกเฉินเผื่อข้อมูลค้าง */}
+      <button onClick={fetchUsers} style={{ background: '#f1f2f6', border: 'none', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer', fontSize: '12px' }}>🔄 รีเฟรชข้อมูล</button>
     </div>
     
     <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
@@ -821,81 +808,87 @@ useEffect(() => {
         </tr>
       </thead>
       <tbody>
-        {users.map((user, index) => (
-          <tr 
-            key={user.id} 
-            style={{ 
-              textAlign: 'center', 
-              borderBottom: '1px solid #f1f2f6',
-              backgroundColor: index % 2 === 0 ? '#ffffff' : '#f9f9f9',
-              transition: '0.2s'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f1f2f6'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = index % 2 === 0 ? '#ffffff' : '#f9f9f9'}
-          >
-            <td style={{ padding: '12px', color: '#7f8c8d' }}>{user.id}</td>
-            <td style={{ textAlign: 'left', padding: '12px' }}>
-              <div style={{ fontWeight: 'bold', color: '#2c3e50' }}>{user.username}</div>
-              <div style={{ fontSize: '12px', color: '#95a5a6' }}>{user.email}</div>
-            </td>
-            <td>
-              <select 
-                value={user.role} 
-                onChange={(e) => updateUser(user.id, { role: e.target.value, status: user.status })}
-                style={{ 
-                  padding: '6px 10px', 
-                  borderRadius: '6px', 
-                  border: '1px solid #dcdde1',
-                  backgroundColor: user.role === 'admin' ? '#fff4e6' : 'white',
-                  cursor: 'pointer'
-                }}
-              >
-                <option value="customer">👤 Customer</option>
-                <option value="admin">🔑 Admin</option>
-              </select>
-            </td>
-            <td>
-              <span style={{ 
-                padding: '5px 12px', 
-                borderRadius: '20px', 
-                fontSize: '11px',
-                fontWeight: 'bold',
-                textTransform: 'uppercase',
-                background: user.status === 'suspended' ? '#ffeaa7' : '#d1fae5',
-                color: user.status === 'suspended' ? '#d63031' : '#10b981',
-                border: `1px solid ${user.status === 'suspended' ? '#fab1a0' : '#a7f3d0'}`
-              }}>
-                {user.status === 'suspended' ? 'ถูกระงับ' : 'ใช้งานปกติ'}
-              </span>
-            </td>
-            <td>
-              <button 
-                onClick={() => {
-                  const newStatus = user.status === 'active' ? 'suspended' : 'active';
-                  if (window.confirm(`คุณแน่ใจหรือไม่ที่จะ ${newStatus === 'suspended' ? 'ระงับ' : 'ปลดระงับ'} บัญชี ${user.username}?`)) {
-                    updateUser(user.id, { role: user.role, status: newStatus });
-                  }
-                }}
-                style={{ 
-                  background: user.status === 'active' ? '#ff7675' : '#55efc4',
-                  color: 'white', 
-                  border: 'none', 
-                  padding: '7px 14px', 
-                  borderRadius: '6px', 
-                  cursor: 'pointer',
-                  fontSize: '12px',
+        {users && users.length > 0 ? (
+          users.map((user, index) => (
+            <tr 
+              key={user.id || index} 
+              style={{ 
+                textAlign: 'center', 
+                borderBottom: '1px solid #f1f2f6',
+                backgroundColor: index % 2 === 0 ? '#ffffff' : '#f9f9f9',
+                transition: '0.2s'
+              }}
+            >
+              <td style={{ padding: '12px', color: '#7f8c8d' }}>{user.id}</td>
+              <td style={{ textAlign: 'left', padding: '12px' }}>
+                {/* 🟢 [แก้ไข]: ป้องกันชื่อหายโดยใช้ค่าสำรองถ้า username เป็น null */}
+                <div style={{ fontWeight: 'bold', color: '#2c3e50' }}>
+                  {user.username || "กำลังโหลด..."} 
+                </div>
+                <div style={{ fontSize: '12px', color: '#95a5a6' }}>
+                  {user.email || "---"}
+                </div>
+              </td>
+              <td>
+                <select 
+                  value={user.role || 'customer'} 
+                  onChange={(e) => {
+                    const newRole = e.target.value;
+                    // ส่งข้อมูลไปอัปเดต โดยยังคงรักษาข้อมูลเดิมในบรรทัดนั้นไว้
+                    updateUser(user.id, { role: newRole, status: user.status });
+                  }}
+                  style={{ 
+                    padding: '6px 10px', 
+                    borderRadius: '6px', 
+                    border: '1px solid #dcdde1',
+                    backgroundColor: user.role === 'admin' ? '#fff4e6' : 'white',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="customer">👤 Customer</option>
+                  <option value="admin">🔑 Admin</option>
+                </select>
+              </td>
+              <td>
+                <span style={{ 
+                  padding: '5px 12px', 
+                  borderRadius: '20px', 
+                  fontSize: '11px',
                   fontWeight: 'bold',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                  transition: '0.2s'
-                }}
-                onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
-                onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
-              >
-                {user.status === 'active' ? '🚫 ระงับการใช้งาน' : '✅ ปลดระงับบัญชี'}
-              </button>
-            </td>
-          </tr>
-        ))}
+                  background: user.status === 'suspended' ? '#ffeaa7' : '#d1fae5',
+                  color: user.status === 'suspended' ? '#d63031' : '#10b981',
+                  border: `1px solid ${user.status === 'suspended' ? '#fab1a0' : '#a7f3d0'}`
+                }}>
+                  {user.status === 'suspended' ? 'ถูกระงับ' : 'ใช้งานปกติ'}
+                </span>
+              </td>
+              <td>
+                <button 
+                  onClick={() => {
+                    const newStatus = user.status === 'active' ? 'suspended' : 'active';
+                    if (window.confirm(`คุณแน่ใจหรือไม่ที่จะ ${newStatus === 'suspended' ? 'ระงับ' : 'ปลดระงับ'} บัญชี ${user.username || ''}?`)) {
+                      updateUser(user.id, { role: user.role, status: newStatus });
+                    }
+                  }}
+                  style={{ 
+                    background: user.status === 'active' ? '#ff7675' : '#55efc4',
+                    color: 'white', 
+                    border: 'none', 
+                    padding: '7px 14px', 
+                    borderRadius: '6px', 
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  {user.status === 'active' ? '🚫 ระงับ' : '✅ ปลดระงับ'}
+                </button>
+              </td>
+            </tr>
+          ))
+        ) : (
+          <tr><td colSpan="5" style={{ padding: '20px', color: '#999' }}>ไม่พบข้อมูลผู้ใช้งาน</td></tr>
+        )}
       </tbody>
     </table>
   </div>

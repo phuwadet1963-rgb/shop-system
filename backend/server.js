@@ -37,24 +37,29 @@ const storage = new CloudinaryStorage({
 });
 const upload = multer({ storage: storage }); 
 
-// เปลี่ยนจากค่าเดิมที่เป็นข้อความตรงๆ เป็น process.env.ชื่อตัวแปร
-const db = mysql.createConnection({
+// 🟢 [แก้ไข]: เปลี่ยนจาก createConnection เป็น createPool เพื่อความเสถียร
+const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
   port: process.env.DB_PORT,
+  waitForConnections: true,    // รอให้สายว่างถ้าถูกใช้งานเต็ม
+  connectionLimit: 10,         // สร้างสายเชื่อมต่อสำรองไว้ 10 สาย
+  queueLimit: 0,
   ssl: {
     rejectUnauthorized: false
   }
 });
 
-db.connect((err) => {
-    if (err) {
-        console.error("❌ เชื่อมต่อฐานข้อมูลล้มเหลว:", err);
-        return;
-    }
-    console.log("✅ เชื่อมต่อฐานข้อมูล Aiven Cloud สำเร็จ!");
+// ตรวจสอบการเชื่อมต่อ (ใช้วิธีดึง connection จาก Pool มาเช็ค)
+db.getConnection((err, connection) => {
+  if (err) {
+    console.error("❌ เชื่อมต่อฐานข้อมูลล้มเหลว:", err);
+    return;
+  }
+  console.log("✅ เชื่อมต่อฐานข้อมูล Aiven Cloud (Pool Mode) สำเร็จ!");
+  connection.release(); // คืนสายเชื่อมต่อกลับเข้ากลุ่ม (Pool)
 
     
     
@@ -287,79 +292,65 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-app.get('/api/users/:id', (req, res) => {
-  const userId = req.params.id;
-  db.query("SELECT id, username, email, address, phone, profile_picture FROM users WHERE id = ?", [userId], (err, result) => {
-    if (err) return res.status(500).json(err);
-    res.json(result[0]); 
-  });
-});
-
 app.put('/api/users/:id', upload.single('profile_picture'), async (req, res) => {
-  const userId = req.params.id;
-  const { username, email, address, phone, password } = req.body;
-  try {
-    let sql = "UPDATE users SET username = ?, email = ?, address = ?, phone = ?";
-    let params = [username, email, address, phone];
-    if (password && password.trim() !== "") {
-      const hashedPassword = await bcrypt.hash(password, 10);
-      sql += ", password = ?";
-      params.push(hashedPassword);
-    }
-    if (req.file) {
-      sql += ", profile_picture = ?";
-      params.push(req.file.path);
-    }
-    sql += " WHERE id = ?";
-    params.push(userId);
-    db.query(sql, params, (err, result) => {
-      if (err) return res.status(500).json(err);
-      res.json({ message: "อัปเดตข้อมูลโปรไฟล์เรียบร้อยแล้ว!" });
-    });
-  } catch (error) { res.status(500).json({ error: "เกิดข้อผิดพลาดในการเข้ารหัสผ่าน" }); }
-});
+  const userId = req.params.id;
+  const { role, status, username, email, address, phone, password } = req.body;
 
-// 1. ดึงรายชื่อผู้ใช้ทั้งหมด (เหมือนเดิมแต่จัดให้ดูง่ายขึ้น)
-app.get('/api/users', (req, res) => {
-  const sql = 'SELECT id, username, email, role, status FROM users ORDER BY id DESC';
-  db.query(sql, (err, results) => {
-    if (err) {
-      console.error('Error fetching users:', err);
-      return res.status(500).json({ message: 'Internal Server Error' });
+  try {
+    // 🟢 กรณีที่ 1: มาจากหน้า Admin (มีแค่ role หรือ status)
+    // เราจะใช้ SQL ที่ "ไม่มี" คอลัมน์ username เพื่อป้องกันชื่อหาย 100%
+    if (role !== undefined || status !== undefined) {
+      const sqlAdmin = "UPDATE users SET role = ?, status = ? WHERE id = ?";
+      db.query(sqlAdmin, [role, status, userId], (err, result) => {
+        if (err) return res.status(500).json(err);
+        return res.json({ message: "Admin อัปเดตสิทธิ์เรียบร้อย" });
+      });
+    } 
+    // 🔵 กรณีที่ 2: มาจากหน้า Profile (มีการแก้ชื่อ/อีเมล)
+    else {
+      let sql = "UPDATE users SET username = ?, email = ?, address = ?, phone = ?";
+      let params = [username, email, address, phone];
+
+      if (password && password.trim() !== "") {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        sql += ", password = ?";
+        params.push(hashedPassword);
+      }
+      if (req.file) {
+        sql += ", profile_picture = ?";
+        params.push(req.file.path);
+      }
+      sql += " WHERE id = ?";
+      params.push(userId);
+
+      db.query(sql, params, (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json({ message: "อัปเดตโปรไฟล์สำเร็จ" });
+      });
     }
-    res.json(results);
-  });
+  } catch (error) {
+    res.status(500).json({ error: "Server Error" });
+  }
 });
 
-// 2. แก้ไขข้อมูล/ระงับบัญชี
-app.put('/api/users/:id', (req, res) => {
+// ✅ เส้นทางพิเศษ: ใช้ชื่อ URL ที่ไม่ซ้ำกับใครในโลก เพื่อกัน Express สับสน
+app.put('/api/special-admin-update/:id', (req, res) => {
   const { id } = req.params;
   const { role, status } = req.body;
 
-  // ตรวจสอบเบื้องต้นว่ามีข้อมูลส่งมาไหม
-  if (!role || !status) {
-    return res.status(400).json({ message: 'ข้อมูลไม่ครบถ้วน (ต้องการ role และ status)' });
-  }
+  console.log("🛠️ Admin Update Call - ID:", id, "Data:", req.body);
 
-  const sqlUpdate = 'UPDATE users SET role = ?, status = ? WHERE id = ?';
+  // SQL นี้ "ไม่มี" คอลัมน์ username เด็ดขาด!! 
+  // ต่อให้หน้าบ้านส่งค่าว่างมา ชื่อใน DB ก็จะไม่หาย เพราะเราสั่งแก้แค่ 2 ช่องนี้
+  const sql = "UPDATE users SET role = ?, status = ? WHERE id = ?";
   
-  db.query(sqlUpdate, [role, status, id], (err, result) => {
+  db.query(sql, [role, status, id], (err, result) => {
     if (err) {
-      console.error('Update error:', err);
-      return res.status(500).json({ message: 'ไม่สามารถอัปเดตข้อมูลได้' });
+      console.error("❌ SQL Error:", err);
+      return res.status(500).json(err);
     }
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'ไม่พบผู้ใช้งานที่ต้องการอัปเดต' });
-    }
-
-    // ✅ แทนที่จะส่งแค่ข้อความ ให้ส่งข้อมูลที่อัปเดตแล้วกลับไป หรือแค่ยืนยันความสำเร็จ
-    // เพื่อให้ Frontend มั่นใจว่าฐานข้อมูลเปลี่ยนแล้วจริงๆ
-    res.json({ 
-      success: true, 
-      message: 'อัปเดตสถานะสำเร็จ',
-      updatedUser: { id, role, status } 
-    });
+    console.log("✅ Update Success, ID:", id);
+    res.json({ message: "อัปเดตสำเร็จโดยเส้นทางพิเศษ" });
   });
 });
 
