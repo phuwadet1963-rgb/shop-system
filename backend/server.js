@@ -333,24 +333,34 @@ app.put('/api/users/:id', upload.single('profile_picture'), async (req, res) => 
   }
 });
 
-// ✅ เส้นทางพิเศษ: ใช้ชื่อ URL ที่ไม่ซ้ำกับใครในโลก เพื่อกัน Express สับสน
+// 1. [เพิ่มใหม่] สำหรับดึงรายชื่อผู้ใช้ทั้งหมดมาโชว์ในตาราง (ที่หายไปตอนนี้)
+app.get('/api/users', (req, res) => {
+  const sql = "SELECT id, username, email, role, status FROM users ORDER BY id DESC";
+  db.query(sql, (err, results) => {
+    if (err) return res.status(500).json(err);
+    res.json(results);
+  });
+});
+
+// 2. [มีแล้ว] สำหรับดึงข้อมูลรายคนไปใช้ตอนสั่งซื้อ
+app.get('/api/users/:id', (req, res) => {
+  const userId = req.params.id;
+  const sql = "SELECT id, username, email, role, status FROM users WHERE id = ?";
+  db.query(sql, [userId], (err, result) => {
+    if (err) return res.status(500).json(err);
+    if (result.length === 0) return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+    res.json(result[0]);
+  });
+});
+
+// 3. [มีแล้ว] สำหรับ Admin เปลี่ยนสิทธิ์ (เส้นทางพิเศษชื่อไม่หาย)
 app.put('/api/special-admin-update/:id', (req, res) => {
   const { id } = req.params;
   const { role, status } = req.body;
-
-  console.log("🛠️ Admin Update Call - ID:", id, "Data:", req.body);
-
-  // SQL นี้ "ไม่มี" คอลัมน์ username เด็ดขาด!! 
-  // ต่อให้หน้าบ้านส่งค่าว่างมา ชื่อใน DB ก็จะไม่หาย เพราะเราสั่งแก้แค่ 2 ช่องนี้
   const sql = "UPDATE users SET role = ?, status = ? WHERE id = ?";
-  
   db.query(sql, [role, status, id], (err, result) => {
-    if (err) {
-      console.error("❌ SQL Error:", err);
-      return res.status(500).json(err);
-    }
-    console.log("✅ Update Success, ID:", id);
-    res.json({ message: "อัปเดตสำเร็จโดยเส้นทางพิเศษ" });
+    if (err) return res.status(500).json(err);
+    res.json({ message: "อัปเดตสำเร็จ" });
   });
 });
 
