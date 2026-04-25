@@ -29,7 +29,19 @@ function ProductDetailPage({ products, addToCart }) {
         {/* 🖼️ ฝั่งซ้าย: รูปภาพ */}
         <div style={{ flex: '1 1 400px' }}>
           {/* 🟢 [แก้ไข]: เปลี่ยนจากดึง localhost เป็นดึงจาก URL ใน DB (Cloudinary) ตรงๆ */}
-          <img src={product.image} alt={product.name} style={{ width: '100%', height: 'auto', borderRadius: '10px', objectFit: 'cover' }} />
+          <img 
+  src={user.profile_picture || 'https://via.placeholder.com/150'} 
+  alt="Profile"
+  style={{
+    width: '40px',      // ปรับขนาดตามความเหมาะสมของ Navbar
+    height: '40px',
+    borderRadius: '50%',
+    objectFit: 'cover'
+  }}
+  onError={(e) => {
+    e.target.src = 'https://via.placeholder.com/150'; // ถ้าลิงก์เสียให้ใช้รูปสำรอง
+  }}
+/>
         </div>
         
         {/* 📝 ฝั่งขวา: รายละเอียด */}
@@ -487,7 +499,7 @@ const updateUser = async (id, data) => {
     if (response.status === 200) {
       // ไม่ต้องทำ Optimistic Update ใดๆ ทั้งสิ้น สั่งโหลดใหม่จาก DB เลย
       await fetchUsers(); 
-      alert("✅ อัปเดตสำเร็จ! คราวนี้ชื่อห้ามหาย");
+      alert("✅ อัปเดตสำเร็จ ");
     }
   } catch (error) {
     console.error("Update Error:", error);
