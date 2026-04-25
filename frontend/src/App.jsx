@@ -26,22 +26,37 @@ function ProductDetailPage({ products, addToCart }) {
       </button>
       
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '40px', background: 'white', padding: '30px', borderRadius: '15px', boxShadow: '0 5px 15px rgba(0,0,0,0.05)' }}>
-        {/* 🖼️ ฝั่งซ้าย: รูปภาพ */}
+        {/* 🖼️ ฝั่งซ้าย: รูปสินค้า */}
         <div style={{ flex: '1 1 400px' }}>
-          {/* 🟢 [แก้ไข]: เปลี่ยนจากดึง localhost เป็นดึงจาก URL ใน DB (Cloudinary) ตรงๆ */}
-          <img 
-  src={user.profile_picture || 'https://via.placeholder.com/150'} 
-  alt="Profile"
-  style={{
-    width: '40px',      // ปรับขนาดตามความเหมาะสมของ Navbar
-    height: '40px',
-    borderRadius: '50%',
-    objectFit: 'cover'
-  }}
-  onError={(e) => {
-    e.target.src = 'https://via.placeholder.com/150'; // ถ้าลิงก์เสียให้ใช้รูปสำรอง
-  }}
-/>
+          {product.image ? (
+            <img 
+              src={product.image} 
+              alt={product.name}
+              style={{
+                width: '100%', 
+                height: '400px', 
+                objectFit: 'cover',
+                borderRadius: '10px'
+              }}
+              onError={(e) => {
+                e.target.src = 'https://via.placeholder.com/400x400?text=No+Image';
+              }}
+            />
+          ) : (
+            <div style={{
+              width: '100%', 
+              height: '400px', 
+              background: '#f0f0f0',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '24px',
+              color: '#999'
+            }}>
+              ไม่มีรูปภาพสินค้า
+            </div>
+          )}
         </div>
         
         {/* 📝 ฝั่งขวา: รายละเอียด */}
@@ -136,7 +151,15 @@ function ProfilePage({ userId }) {
                 <img src={URL.createObjectURL(file)} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : profile.profile_picture ? (
                 // 🟢 [แก้ไข]: ดึงจาก URL ในฐานข้อมูลตรงๆ (Cloudinary URL)
-                <img src={profile.profile_picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img 
+                  src={profile.profile_picture} 
+                  alt="Profile" 
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                  onError={(e) => {
+                    // กันพลาด: ถ้าใน DB ใครยังไม่มีรูป (เป็น NULL) ให้ใช้รูปสำรองนี้
+                    e.target.src = 'https://via.placeholder.com/150';
+                  }}
+                />
               ) : (
                 <span style={{ fontSize: '50px' }}>👤</span>
               )}
@@ -477,7 +500,7 @@ function AppContent() {
 // 1. ฟังก์ชันดึงข้อมูล (ปรับให้รองรับ error ได้ดีขึ้น)
 const fetchUsers = async () => {
   try {
-    const response = await axios.get('https://shop-system-backend.onrender.com/api/users');
+    const response = await axios.get('https://shop-system-backend.onrender.com/api/users/' + id);
     // ตรวจสอบว่าข้อมูลที่ได้มาเป็น Array หรือไม่ก่อนจะ setUsers
     if (Array.isArray(response.data)) {
       setUsers(response.data);
