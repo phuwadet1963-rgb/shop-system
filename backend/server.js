@@ -178,23 +178,32 @@ app.get('/api/orders', (req, res) => {
 });
 
 app.put('/api/orders/:id', (req, res) => {
-  const orderId = req.params.id;
-  const { status } = req.body;
-  const updateSql = "UPDATE orders SET status = ? WHERE id = ?";
-  db.query(updateSql, [status, orderId], (err, result) => {
-    if (err) return res.status(500).json(err);
-    if (status === 'จัดส่งแล้ว') {
-      const getItemsSql = "SELECT product_id, quantity FROM order_items WHERE order_id = ?";
-      db.query(getItemsSql, [orderId], (err, items) => {
-        if (err) return;
-        items.forEach(item => {
-          const cutStockSql = "UPDATE products SET stock = stock - ? WHERE id = ?";
-          db.query(cutStockSql, [item.quantity, item.product_id], (err3) => {});
-        });
-      });
-    }
-    res.json({ message: "อัปเดตสถานะสำเร็จ" });
-  });
+  const orderId = req.params.id;
+  // 1. รับค่า status, tracking_number และ shipping_company จาก req.body
+  const { status, tracking_number, shipping_company } = req.body;
+
+  // 2. เพิ่มการอัปเดต tracking_number และ shipping_company ลงใน SQL
+  const updateSql = "UPDATE orders SET status = ?, tracking_number = ?, shipping_company = ? WHERE id = ?";
+  
+  db.query(updateSql, [status, tracking_number, shipping_company, orderId], (err, result) => {
+    if (err) return res.status(500).json(err);
+
+    // 3. ระบบตัดสต็อกเดิมของบิ๊ก (ทำงานเมื่อสถานะเป็น 'จัดส่งแล้ว')
+    if (status === 'จัดส่งแล้ว') {
+      const getItemsSql = "SELECT product_id, quantity FROM order_items WHERE order_id = ?";
+      db.query(getItemsSql, [orderId], (err, items) => {
+        if (err) return;
+        items.forEach(item => {
+          const cutStockSql = "UPDATE products SET stock = stock - ? WHERE id = ?";
+          db.query(cutStockSql, [item.quantity, item.product_id], (err3) => {
+            if (err3) console.error("Cut stock error:", err3);
+          });
+        });
+      });
+    }
+
+    res.json({ message: "อัปเดตสถานะและข้อมูลการจัดส่งสำเร็จ" });
+  });
 });
 
 app.put('/api/orders/pay/:id', upload.single('slip'), (req, res) => {
@@ -249,12 +258,24 @@ app.post('/api/login', (req, res) => {
 });
 
 app.get('/api/my-orders/:userId', (req, res) => {
-    const { userId } = req.params;
-    const sql = "SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC";
-    db.query(sql, [userId], (err, result) => {
-        if (err) return res.status(500).json(err);
-        res.json(result);
-    });
+    const { userId } = req.params;
+    
+    // SQL ตัวใหม่: ดึง product_id ตัวแรกจาก order_items มาแปะกับออเดอร์
+    const sql = `
+        SELECT o.*, 
+        (SELECT product_id FROM order_items WHERE order_id = o.id LIMIT 1) as product_id
+        FROM orders o 
+        WHERE o.user_id = ? 
+        ORDER BY o.created_at DESC
+    `;
+
+    db.query(sql, [userId], (err, result) => {
+        if (err) {
+            console.error("SQL Error:", err);
+            return res.status(500).json(err);
+        }
+        res.json(result);
+    });
 });
 
 app.post('/api/register', async (req, res) => {
@@ -325,7 +346,8 @@ app.put('/api/users/:id', upload.single('profile_picture'), async (req, res) => 
 
       db.query(sql, params, (err, result) => {
         if (err) return res.status(500).json(err);
-        res.json({ message: "อัปเดตโปรไฟล์สำเร็จ" });
+        const profilePicture = req.file ? req.file.path : null;
+res.json({ message: "อัปเดตโปรไฟล์สำเร็จ", profile_picture: profilePicture });
       });
     }
   } catch (error) {
@@ -345,7 +367,7 @@ app.get('/api/users', (req, res) => {
 // 2. [มีแล้ว] สำหรับดึงข้อมูลรายคนไปใช้ตอนสั่งซื้อ
 app.get('/api/users/:id', (req, res) => {
   const userId = req.params.id;
-  const sql = "SELECT id, username, email, role, status FROM users WHERE id = ?";
+  const sql = "SELECT id, username, email, role, status, profile_picture FROM users WHERE id = ?";
   db.query(sql, [userId], (err, result) => {
     if (err) return res.status(500).json(err);
     if (result.length === 0) return res.status(404).json({ message: "ไม่พบผู้ใช้" });
@@ -362,6 +384,37 @@ app.put('/api/special-admin-update/:id', (req, res) => {
     if (err) return res.status(500).json(err);
     res.json({ message: "อัปเดตสำเร็จ" });
   });
+});
+
+// ⭐️ 1. API สำหรับบันทึกการรีวิว (ใช้ตอนลูกค้ากดส่งรีวิว)
+app.post('/api/reviews', (req, res) => {
+    const { product_id, user_id, rating, comment } = req.body;
+    const sql = "INSERT INTO reviews (product_id, user_id, rating, comment) VALUES (?, ?, ?, ?)";
+    
+    db.query(sql, [product_id, user_id, rating, comment], (err, result) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: "รีวิวไม่สำเร็จ" });
+        }
+        res.json({ message: "บันทึกรีวิวเรียบร้อยแล้ว ขอบคุณครับ!" });
+    });
+});
+
+// 🔍 2. API สำหรับดึงรีวิวของสินค้านั้นๆ มาแสดง (JOIN กับตาราง users เพื่อเอาชื่อและรูปคนรีวิวมาโชว์)
+app.get('/api/reviews/:product_id', (req, res) => {
+    const { product_id } = req.params;
+    const sql = `
+        SELECT r.*, u.username, u.profile_picture 
+        FROM reviews r 
+        JOIN users u ON r.user_id = u.id 
+        WHERE r.product_id = ? 
+        ORDER BY r.created_at DESC
+    `;
+    
+    db.query(sql, [product_id], (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json(result);
+    });
 });
 
 const PORT = process.env.PORT || 5000;

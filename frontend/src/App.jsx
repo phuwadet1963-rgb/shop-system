@@ -233,6 +233,10 @@ function AppContent() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ทั้งหมด');
   const [adminTab, setAdminTab] = useState('report'); 
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null); // เก็บว่าจะรีวิวสินค้าตัวไหน
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState("");
 
   useEffect(() => {
     // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
@@ -374,16 +378,33 @@ function AppContent() {
   };
 
   const updateOrderStatus = (orderId, newStatus) => {
-    // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
-    axios.put(`${API_URL}/orders/${orderId}`, { status: newStatus })
-      .then(() => {
-        alert("อัปเดตสถานะเป็น: " + newStatus);
-        fetchOrders(); 
-        // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
-        axios.get(`${API_URL}/products`).then(res => setProducts(res.data)); 
-      })
-      .catch(err => alert("อัปเดตพลาด: " + err));
-  };
+    let trackingNum = null;
+    let transport = null;
+
+    // 1. ถ้าเลือกเป็น 'จัดส่งแล้ว' ให้ถามข้อมูลเพิ่ม
+    if (newStatus === "จัดส่งแล้ว") {
+        transport = prompt("ระบุบริษัทขนส่ง (เช่น Kerry, Flash, ไปรษณีย์ไทย):");
+        trackingNum = prompt("ระบุเลขพัสดุ:");
+
+        if (!transport || !trackingNum) {
+            alert("❌ ต้องระบุข้อมูลการส่งให้ครบถ้วน!");
+            return; // หยุดทำงานถ้ากรอกไม่ครบ
+        }
+    }
+
+    // 2. ส่งข้อมูลไปที่ Backend (ส่ง status, tracking_number และ shipping_company ไปด้วย)
+    axios.put(`${API_URL}/orders/${orderId}`, { 
+        status: newStatus,
+        tracking_number: trackingNum,
+        shipping_company: transport
+    })
+    .then(() => {
+        alert("✅ อัปเดตสถานะเป็น: " + newStatus);
+        fetchOrders();
+        axios.get(`${API_URL}/products`).then(res => setProducts(res.data));
+    })
+    .catch(err => alert("อัปเดตพลาด: " + err));
+};
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -573,6 +594,18 @@ const updateUser = async (id, data) => {
     return matchSearch && (selectedCategory === 'ทั้งหมด' ? true : matchCategory);
   });
 
+// เพิ่ม state นี้ใน App component หลัก (ใกล้กับ userId state)
+const [profile, setProfile] = useState({ username: '', email: '', profile_picture: '' });
+
+// โหลดข้อมูลเมื่อ login สำเร็จหรือมี userId
+useEffect(() => {
+  if (userId) {
+    axios.get(`${API_URL}/users/${userId}`)
+      .then(res => setProfile(res.data))
+      .catch(err => console.error(err));
+  }
+}, [userId]);
+
   const logout = () => {
     localStorage.clear();
     setIsLoggedIn(false);
@@ -605,9 +638,43 @@ const updateUser = async (id, data) => {
     </nav>
 
     {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.5)', zIndex: 998, backdropFilter: 'blur(3px)' }} />}
-
+    
     <div style={{ position: 'fixed', top: 0, left: isSidebarOpen ? 0 : '-300px', width: '260px', height: '100vh', background: '#ffffff', boxShadow: '4px 0 15px rgba(0,0,0,0.1)', transition: 'left 0.3s ease-in-out', zIndex: 999, display: 'flex', flexDirection: 'column' }}>
   <div style={{ padding: '20px', background: '#2c3e50', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h3 style={{ margin: 0 }}>เมนูหลัก</h3><button onClick={() => setIsSidebarOpen(false)} style={{ background: 'none', border: 'none', color: 'white', fontSize: '20px', cursor: 'pointer' }}>✖</button></div>
+     {/* 🟢 Profile Section ใน Sidebar */}
+<div style={{ 
+  padding: '20px 15px', 
+  borderBottom: '1px solid #eee', 
+  display: 'flex', 
+  alignItems: 'center', 
+  gap: '12px' 
+}}>
+  <div style={{ 
+    width: '50px', height: '50px', borderRadius: '50%', 
+    overflow: 'hidden', background: '#eee', 
+    border: '2px solid #3498db', flexShrink: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'center'
+  }}>
+    {profile.profile_picture ? (
+      <img 
+        src={profile.profile_picture} 
+        alt="avatar"
+        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        onError={(e) => { e.target.src = ''; e.target.style.display = 'none'; }}
+      />
+    ) : (
+      <span style={{ fontSize: '24px' }}>👤</span>
+    )}
+  </div>
+  <div>
+    <div style={{ fontWeight: 'bold', color: '#2c3e50', fontSize: '15px' }}>
+      {profile.username || 'ผู้ใช้งาน'}
+    </div>
+    <div style={{ fontSize: '12px', color: '#95a5a6' }}>
+      {profile.email || ''}
+    </div>
+  </div>
+</div>
   <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
     {isLoggedIn && userRole !== 'admin' && <Link to="/profile" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration: 'none', color: '#2c3e50', fontSize: '18px', fontWeight: 'bold', padding: '10px', background: '#f8f9fa', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>👤 โปรไฟล์ของฉัน</Link>}
     <Link to="/" onClick={() => setIsSidebarOpen(false)} style={{ textDecoration: 'none', color: '#2c3e50', fontSize: '18px', fontWeight: 'bold', padding: '10px', background: '#f8f9fa', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>🏠 หน้าแรก</Link>
@@ -627,6 +694,68 @@ const updateUser = async (id, data) => {
     )}
   </div>
 </div>
+
+{showReviewModal && (
+  <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+    <div style={{ background: 'white', padding: '30px', borderRadius: '15px', width: '400px' }}>
+      <h2 style={{ textAlign: 'center' }}>⭐ รีวิวสินค้า</h2>
+      
+      <p style={{ marginBottom: '15px' }}>คะแนนความพึงพอใจ: 
+        <select value={rating} onChange={(e) => setRating(e.target.value)} style={{ marginLeft: '10px', padding: '5px', borderRadius: '5px' }}>
+          <option value="5">5 ดาว (ดีมาก)</option>
+          <option value="4">4 ดาว (ดี)</option>
+          <option value="3">3 ดาว (ปานกลาง)</option>
+          <option value="2">2 ดาว (พอใช้)</option>
+          <option value="1">1 ดาว (ควรปรับปรุง)</option>
+        </select>
+      </p>
+
+      <textarea 
+        placeholder="เขียนรีวิวของคุณที่นี่..."
+        style={{ width: '100%', height: '100px', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }}
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+      />
+
+      <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between' }}>
+        {/* ปุ่มยกเลิก: แค่ปิดหน้าต่าง */}
+        <button 
+          onClick={() => setShowReviewModal(false)} 
+          style={{ background: '#eee', padding: '10px 20px', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+        >
+          ยกเลิก
+        </button>
+
+        {/* ปุ่มส่งรีวิว: ส่งข้อมูลไปบันทึกลง Database */}
+        <button 
+          onClick={async () => {
+            try {
+              if (!selectedProduct) return alert("ไม่พบรหัสสินค้า");
+
+              await axios.post(`https://shop-system-backend.onrender.com/api/reviews`, {
+                product_id: selectedProduct,
+                user_id: userId, // 👈 บิ๊กตรวจสอบชื่อตัวแปรนี้ด้วยว่าในไฟล์นี้ชื่อ userId หรือ user.id
+                rating: rating,
+                comment: comment
+              });
+
+              alert("✅ ขอบคุณสำหรับรีวิวครับ!");
+              setShowReviewModal(false);
+              setComment(""); // ล้างข้อมูลหลังจากส่งเสร็จ
+              setRating(5);
+            } catch (err) {
+              console.error(err);
+              alert("❌ รีวิวไม่สำเร็จ กรุณาลองใหม่");
+            }
+          }}
+          style={{ background: '#6c5ce7', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+        >
+          ส่งรีวิว
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
     <Routes>
       <Route path="/" element={
@@ -705,11 +834,53 @@ const updateUser = async (id, data) => {
                       <td>฿{order.total_price}</td>
                       <td><span style={{ padding: '5px 12px', borderRadius: '15px', fontSize: '12px', background: order.status === 'จัดส่งแล้ว' ? '#55efc4' : '#ffeaa7' }}>{order.status}</span></td>
                       <td>
-                        {order.status === 'รอดำเนินการ' && <button onClick={() => cancelOrder(order.id)} style={{ background: '#ff7675', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px', marginRight: '5px' }}>ยกเลิก</button>}
-                        <button onClick={() => { setCurrentOrderId(order.id); setShowPayModal(true); }} style={{ background: '#3498db', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px', marginRight: '5px' }}>💳 จ่ายเงิน</button>
-                        <button onClick={() => generatePDF(order)} style={{ background: '#27ae60', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px', marginRight: '5px' }}>📄 บิล</button>
-                        <button onClick={() => deleteOrderHistory(order.id)} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px' }}>🗑️ ลบ</button>
-                      </td>
+  {/* ปุ่มจัดการเดิมของบิ๊ก */}
+  {order.status === 'รอดำเนินการ' && 
+    <button onClick={() => cancelOrder(order.id)} style={{ background: '#ff7675', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px', marginRight: '5px' }}>ยกเลิก</button>}
+  
+  <button onClick={() => { setCurrentOrderId(order.id); setShowPayModal(true); }} style={{ background: '#3498db', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px', marginRight: '5px' }}>💳 จ่ายเงิน</button>
+  <button onClick={() => generatePDF(order)} style={{ background: '#27ae60', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px', marginRight: '5px' }}>📄 บิล</button>
+  
+  {/* 🚚 จุดที่เพิ่มใหม่: ปุ่มตามพัสดุ (จะขึ้นเฉพาะเมื่อมีเลขพัสดุเท่านั้น) */}
+  {order.tracking_number && (
+    <button 
+      onClick={() => {
+    let url = "";
+    const track = order.tracking_number;
+    const company = order.shipping_company.toLowerCase();
+
+    if (company.includes("kerry")) {
+      // ลิงก์ Kerry ตัวนี้จะไปหน้าเช็คภาพรวม
+      url = `https://th.kerryexpress.com/th/track/?track=${track}`;
+      // ถ้าตัวบนยังไม่ได้ ลองตัวนี้ครับ: url = `https://t.kerryexpress.com/th/track/${track}`;
+    } else if (company.includes("flash")) {
+      url = `https://www.flashexpress.co.th/tracking/?se=${track}`;
+    } else if (company.includes("thai") || company.includes("ไปรษณีย์")) {
+      url = `https://track.thailandpost.co.th/?trackNumber=${track}`;
+    } else {
+      url = `https://www.google.com/search?q=เช็คพัสดุ+${track}`;
+    }
+    window.open(url, '_blank');
+}}
+      style={{ background: '#ff9800', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px', marginRight: '5px' }}
+    >
+      🚚 ตามพัสดุ
+    </button>
+  )}
+{order.status === 'จัดส่งแล้ว' && (
+    <button 
+      onClick={() => { 
+        setSelectedProduct(order.product_id); 
+        setShowReviewModal(true); 
+      }} 
+      style={{ background: '#6c5ce7', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px', marginRight: '5px' }}
+    >
+      ⭐ รีวิว
+    </button>
+  )}
+
+  <button onClick={() => deleteOrderHistory(order.id)} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px' }}>🗑️ ลบ</button>
+</td>
                     </tr>
                   ))}
                 </tbody>
