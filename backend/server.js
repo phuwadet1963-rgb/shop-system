@@ -446,5 +446,21 @@ app.delete('/api/admin/reviews/:id', (req, res) => {
     });
 });
 
+// ดึงรีวิวของสินค้าเฉพาะชิ้น (ส่ง productId มาทาง URL)
+app.get('/api/reviews/:productId', (req, res) => {
+    const { productId } = req.params;
+    const sql = `
+        SELECT r.*, u.username 
+        FROM reviews r 
+        JOIN users u ON r.user_id = u.id 
+        WHERE r.product_id = ? 
+        ORDER BY r.created_at DESC
+    `;
+    db.query(sql, [productId], (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json(result);
+    });
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 เซิร์ฟเวอร์รันที่พอร์ต ${PORT} (Aiven Cloud Mode)`));
