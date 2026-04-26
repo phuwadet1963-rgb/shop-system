@@ -485,8 +485,7 @@ function AppContent() {
 // 1. วางฟังก์ชันไว้ข้างบน (ก่อน useEffect)
 const fetchAdminReviews = async () => {
     try {
-        // เปลี่ยนจาก render เป็น localhost
-        const res = await axios.get('http://localhost:5000/api/admin/reviews'); 
+        const res = await axios.get('https://shop-system-backend.onrender.com/api/admin/reviews');
         setAllReviews(res.data);
     } catch (err) {
         console.error("ดึงข้อมูลรีวิวไม่สำเร็จ:", err);
@@ -495,10 +494,9 @@ const fetchAdminReviews = async () => {
 
 const deleteReview = async (id) => {
     try {
-        // เปลี่ยนจาก render เป็น localhost เช่นกัน
-        await axios.delete(`http://localhost:5000/api/admin/reviews/${id}`);
+        await axios.delete(`https://shop-system-backend.onrender.com/api/admin/reviews/${id}`);
         alert("ลบรีวิวเรียบร้อยแล้ว");
-        fetchAdminReviews(); 
+        fetchAdminReviews(); // ดึงใหม่ทันที
     } catch (err) {
         alert("ลบไม่สำเร็จ");
     }
@@ -552,7 +550,7 @@ useEffect(() => {
 // 1. ฟังก์ชันดึงข้อมูล (ปรับให้รองรับ error ได้ดีขึ้น)
 const fetchUsers = async () => {
   try {
-    const response = await axios.get('https://shop-system-backend.onrender.com/api/users/' + id);
+    const response = await axios.get('https://shop-system-backend.onrender.com/api/users');
     // ตรวจสอบว่าข้อมูลที่ได้มาเป็น Array หรือไม่ก่อนจะ setUsers
     if (Array.isArray(response.data)) {
       setUsers(response.data);
