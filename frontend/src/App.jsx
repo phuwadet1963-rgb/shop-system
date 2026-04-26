@@ -237,6 +237,7 @@ function AppContent() {
   const [selectedProduct, setSelectedProduct] = useState(null); // เก็บว่าจะรีวิวสินค้าตัวไหน
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
+  const [allReviews, setAllReviews] = useState([]); // เก็บรายการรีวิวทั้งหมด
 
   useEffect(() => {
     // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
@@ -481,6 +482,36 @@ function AppContent() {
       .catch(() => alert("สั่งซื้อไม่สำเร็จ"));
   };
 
+// 1. วางฟังก์ชันไว้ข้างบน (ก่อน useEffect)
+const fetchAdminReviews = async () => {
+    try {
+        // เปลี่ยนจาก render เป็น localhost
+        const res = await axios.get('http://localhost:5000/api/admin/reviews'); 
+        setAllReviews(res.data);
+    } catch (err) {
+        console.error("ดึงข้อมูลรีวิวไม่สำเร็จ:", err);
+    }
+};
+
+const deleteReview = async (id) => {
+    try {
+        // เปลี่ยนจาก render เป็น localhost เช่นกัน
+        await axios.delete(`http://localhost:5000/api/admin/reviews/${id}`);
+        alert("ลบรีวิวเรียบร้อยแล้ว");
+        fetchAdminReviews(); 
+    } catch (err) {
+        alert("ลบไม่สำเร็จ");
+    }
+};
+
+// 2. ใน useEffect ให้เรียกใช้แบบนี้
+useEffect(() => {
+    if (adminTab === 'reviews') {
+        fetchAdminReviews();
+    }
+    // ... เงื่อนไขอื่นๆ ของบิ๊ก
+}, [adminTab]);
+
   const handlePayment = (e) => {
     e.preventDefault();
     const formData = new FormData();
@@ -687,8 +718,26 @@ useEffect(() => {
           <button onClick={() => { setAdminTab('add'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'add' ? '#1abc9c' : 'transparent', color: adminTab === 'add' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>➕ เพิ่มสินค้าใหม่</button>
           <button onClick={() => { setAdminTab('stock'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'stock' ? '#1abc9c' : 'transparent', color: adminTab === 'stock' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>📦 จัดการสต็อก</button>
           <button onClick={() => { setAdminTab('orders'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'orders' ? '#1abc9c' : 'transparent', color: adminTab === 'orders' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>🧾 รายการสั่งซื้อ</button>
-          {/* 🟢 [เพิ่ม]: เมนูจัดการผู้ใช้ */}
           <button onClick={() => { setAdminTab('users'); navigate('/admin'); setIsSidebarOpen(false); }} style={{ textAlign: 'left', background: adminTab === 'users' ? '#1abc9c' : 'transparent', color: adminTab === 'users' ? 'white' : '#2c3e50', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>👥 จัดการผู้ใช้</button>
+<button 
+  onClick={() => { setAdminTab('reviews'); navigate('/admin'); setIsSidebarOpen(false); }} 
+  style={{ 
+    textAlign: 'left', 
+    background: adminTab === 'reviews' ? '#1abc9c' : 'transparent', 
+    color: adminTab === 'reviews' ? 'white' : '#2c3e50', 
+    border: 'none', 
+    padding: '10px', 
+    borderRadius: '5px', 
+    cursor: 'pointer', 
+    fontWeight: 'bold', 
+    transition: '0.2s',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px'
+  }}
+>
+  📝 จัดการรีวิว
+</button>
         </div>
       </div>
     )}
@@ -870,7 +919,9 @@ useEffect(() => {
 {order.status === 'จัดส่งแล้ว' && (
     <button 
       onClick={() => { 
-        setSelectedProduct(order.product_id); 
+        // log ดูก่อนว่าได้ค่าอะไร
+console.log("product_id ที่ได้:", order.product_id, "order:", order);
+setSelectedProduct(order.product_id); 
         setShowReviewModal(true); 
       }} 
       style={{ background: '#6c5ce7', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px', marginRight: '5px' }}
@@ -1097,6 +1148,55 @@ useEffect(() => {
         )}
       </tbody>
     </table>
+  </div>
+)}
+{adminTab === 'reviews' && (
+  <div style={{ padding: '20px', background: 'white', borderRadius: '15px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+    <h2 style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>📝 จัดการรีวิวจากลูกค้า</h2>
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ background: '#2c3e50', color: 'white', textAlign: 'left' }}>
+            <th style={{ padding: '12px' }}>สินค้า</th>
+            <th style={{ padding: '12px' }}>ลูกค้า</th>
+            <th style={{ padding: '12px' }}>คะแนน</th>
+            <th style={{ padding: '12px' }}>ความคิดเห็น</th>
+            <th style={{ padding: '12px' }}>วันที่</th>
+            <th style={{ padding: '12px' }}>จัดการ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {/* สมมติว่าบิ๊กตั้งชื่อ state ที่เก็บรีวิวว่า allReviews */}
+          {allReviews.length === 0 ? (
+            <tr><td colSpan="6" style={{ textAlign: 'center', padding: '20px' }}>ยังไม่มีรีวิวในขณะนี้</td></tr>
+          ) : (
+            allReviews.map((review) => (
+              <tr key={review.id} style={{ borderBottom: '1px solid #eee' }}>
+                <td style={{ padding: '12px' }}>{review.product_name}</td>
+                <td style={{ padding: '12px' }}>{review.username}</td>
+                <td style={{ padding: '12px', color: '#f1c40f' }}>
+                  {'⭐'.repeat(review.rating)}
+                </td>
+                <td style={{ padding: '12px' }}>{review.comment}</td>
+                <td style={{ padding: '12px' }}>{new Date(review.created_at).toLocaleDateString('th-TH')}</td>
+                <td style={{ padding: '12px' }}>
+                  <button 
+                    onClick={() => {
+                      if(window.confirm('คุณแน่ใจหรือไม่ที่จะลบริวิวกนี้?')) {
+                        deleteReview(review.id);
+                      }
+                    }}
+                    style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer' }}
+                  >
+                    🗑️ ลบ
+                  </button>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
   </div>
 )}
         </div>

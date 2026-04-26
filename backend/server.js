@@ -417,5 +417,34 @@ app.get('/api/reviews/:product_id', (req, res) => {
     });
 });
 
+// 📋 1. API สำหรับดึงรีวิวทั้งหมด (สำหรับแอดมิน)
+app.get('/api/admin/reviews', (req, res) => {
+    // SQL นี้จะไปดึงชื่อสินค้า และชื่อลูกค้ามาโชว์ด้วยครับ
+    const sql = `
+        SELECT r.*, u.username, p.name as product_name 
+        FROM reviews r 
+        JOIN users u ON r.user_id = u.id 
+        JOIN products p ON r.product_id = p.id 
+        ORDER BY r.created_at DESC
+    `;
+    db.query(sql, (err, result) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json(err);
+        }
+        res.json(result);
+    });
+});
+
+// 🗑️ 2. API สำหรับลบรีวิว (สำหรับแอดมิน)
+app.delete('/api/admin/reviews/:id', (req, res) => {
+    const { id } = req.params;
+    const sql = "DELETE FROM reviews WHERE id = ?";
+    db.query(sql, [id], (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json({ message: "ลบรีวิวเรียบร้อยแล้ว" });
+    });
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 เซิร์ฟเวอร์รันที่พอร์ต ${PORT} (Aiven Cloud Mode)`));
