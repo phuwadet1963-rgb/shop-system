@@ -8,15 +8,27 @@ import * as XLSX from 'xlsx';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import API_URL from './config'; // หรือใส่ path ให้ตรงกับที่ไฟล์ config.js อยู่
 
-// 🟢 [เพิ่มส่วนนี้]: คอมโพเนนต์สำหรับหน้ารายละเอียดสินค้า
-function ProductDetailPage({ products, addToCart }) {
+// 🟢 [แก้ไข]: คอมโพเนนต์สำหรับหน้ารายละเอียดสินค้า พร้อมระบบโหลดรีวิวอัตโนมัติ
+function ProductDetailPage({ products, addToCart, productReviews, fetchProductReviews }) {
   const { id } = useParams(); 
   const navigate = useNavigate();
   
   const product = products.find(p => p.id === Number(id));
 
+  // 🔄 ดึงรีวิวทันทีที่เข้าหน้านี้ หรือเมื่อ ID สินค้าเปลี่ยน
+  useEffect(() => {
+    if (id) {
+      fetchProductReviews(id);
+    }
+  }, [id, fetchProductReviews]);
+
   if (!product) {
-    return <div style={{ padding: '50px', textAlign: 'center' }}><h3>กำลังโหลด... หรือไม่พบสินค้านี้ 😥</h3><button onClick={() => navigate('/')}>กลับหน้าแรก</button></div>;
+    return (
+      <div style={{ padding: '50px', textAlign: 'center' }}>
+        <h3>กำลังโหลด... หรือไม่พบสินค้านี้ 😥</h3>
+        <button onClick={() => navigate('/')}>กลับหน้าแรก</button>
+      </div>
+    );
   }
 
   return (
@@ -90,6 +102,7 @@ function ProductDetailPage({ products, addToCart }) {
           </button>
         </div>
       </div>
+
       {/* ⭐ [ส่วนที่เพิ่มใหม่]: วางต่อจาก Card รายละเอียดสินค้า */}
       <div style={{ marginTop: '30px', background: 'white', padding: '30px', borderRadius: '15px', boxShadow: '0 5px 15px rgba(0,0,0,0.05)' }}>
           <h3 style={{ borderBottom: '2px solid #f1f1f1', paddingBottom: '15px', marginBottom: '20px' }}>
@@ -126,11 +139,7 @@ function ProfilePage({ userId }) {
   const [profile, setProfile] = useState({ username: '', email: '', address: '', phone: '', profile_picture: '', password: '' });
   const [file, setFile] = useState(null); 
   const navigate = useNavigate();
-useEffect(() => {
-    if (product.id) {
-        fetchProductReviews(product.id);
-    }
-}, [product.id]);
+
   useEffect(() => {
     if (userId) {
       // ✅ [แก้ไข]: เปลี่ยนจาก localhost เป็น ${API_URL}
@@ -882,7 +891,14 @@ useEffect(() => {
 
       <Route path="/profile" element={ isLoggedIn ? <ProfilePage userId={userId} /> : <Navigate to="/login" /> } />
       
-      <Route path="/product/:id" element={<ProductDetailPage products={products} addToCart={addToCart} />} />
+      <Route path="/product/:id" element={
+  <ProductDetailPage 
+    products={products} 
+    addToCart={addToCart} 
+    productReviews={productReviews} 
+    fetchProductReviews={fetchProductReviews} 
+  />
+} />
 
       <Route path="/cart" element={
         <div style={{ padding: '40px', maxWidth: '800px', margin: '0 auto' }}>
