@@ -230,13 +230,25 @@ app.delete('/api/orders/:id', (req, res) => {
   });
 });
 
+// ✅ เส้นใหม่ — ส่งทั้ง order info และ items
 app.get('/api/orders/:id/items', (req, res) => {
-  const orderId = req.params.id;
-  const sql = `SELECT p.name, p.price, oi.quantity FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?`;
-  db.query(sql, [orderId], (err, result) => {
-    if (err) return res.status(500).json(err);
-    res.json(result);
-  });
+  const orderId = req.params.id;
+
+  db.query('SELECT * FROM orders WHERE id = ?', [orderId], (err, orderResult) => {
+    if (err || orderResult.length === 0)
+      return res.status(404).json({ error: 'ไม่พบออเดอร์' });
+
+    const sql = `
+      SELECT oi.id, oi.quantity, p.price, p.name, p.image
+      FROM order_items oi
+      JOIN products p ON oi.product_id = p.id
+      WHERE oi.order_id = ?
+    `;
+    db.query(sql, [orderId], (err2, itemsResult) => {
+      if (err2) return res.status(500).json({ error: err2.message });
+      res.json({ order: orderResult[0], items: itemsResult });
+    });
+  });
 });
 
 app.post('/api/login', (req, res) => {
@@ -367,7 +379,7 @@ app.get('/api/users', (req, res) => {
 // 2. [มีแล้ว] สำหรับดึงข้อมูลรายคนไปใช้ตอนสั่งซื้อ
 app.get('/api/users/:id', (req, res) => {
   const userId = req.params.id;
-  const sql = "SELECT id, username, email, role, status, profile_picture FROM users WHERE id = ?";
+  const sql = "SELECT id, username, email, role, status, profile_picture, address, phone FROM users WHERE id = ?";
   db.query(sql, [userId], (err, result) => {
     if (err) return res.status(500).json(err);
     if (result.length === 0) return res.status(404).json({ message: "ไม่พบผู้ใช้" });
@@ -459,6 +471,34 @@ app.get('/api/reviews/:productId', (req, res) => {
     db.query(sql, [productId], (err, result) => {
         if (err) return res.status(500).json(err);
         res.json(result);
+    });
+});
+
+// --- ส่วนของจัดการหมวดหมู่ (Admin Category API) ---
+
+// 1. ดึงหมวดหมู่ทั้งหมด
+app.get('/api/categories', (req, res) => {
+    db.query('SELECT * FROM categories ORDER BY name ASC', (err, results) => {
+        if (err) return res.status(500).json(err);
+        res.json(results);
+    });
+});
+
+// 2. เพิ่มหมวดหมู่ใหม่
+app.post('/api/admin/categories', (req, res) => {
+    const { name } = req.body;
+    db.query('INSERT INTO categories (name) VALUES (?)', [name], (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json({ id: result.insertId, name });
+    });
+});
+
+// 3. ลบหมวดหมู่
+app.delete('/api/admin/categories/:id', (req, res) => {
+    const { id } = req.params;
+    db.query('DELETE FROM categories WHERE id = ?', [id], (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json({ message: "ลบหมวดหมู่สำเร็จ" });
     });
 });
 
